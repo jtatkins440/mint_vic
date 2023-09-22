@@ -1,0 +1,5 @@
+<launch>
+	<include file="$(find iiwa_gazebo)/launch/iiwa_gazebo.launch"/>
+	<include file="$(find admittance_control)/launch/admittance_control.launch"/>
+	<node name="Command_Publisher" pkg="admittance_control" type="force_sim.py" />
+</launch>
