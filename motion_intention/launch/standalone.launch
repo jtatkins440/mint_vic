@@ -1,0 +1,4 @@
+<launch>
+    <node name="pose_pub" pkg="motion_intention" type="test_pub.py" />
+    <node name="mint_pub" pkg="motion_intention" type="motion_intention_node.cpp" />
+</launch>

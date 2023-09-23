@@ -23,13 +23,15 @@ class MIntNodeWrapper{
 
 	private:
 	std::deque<Eigen::ArrayXf> input_deque;
-	int test_int = 0;
-	void subscriberCallback();  
+	//ros::Time start_time = ros::Time::now(); 
+	void subscriberCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);  
 };
 
 
-void MIntNodeWrapper::subscriberCallback()
-{
+void MIntNodeWrapper::subscriberCallback(const geometry_msgs::PoseStamped::ConstPtr& msg){
+	position_new = msg -> position;
+
+	/*
 	int max_deque_size = 10;
 	for (int i = 0; i < 100; i++)
 	{
@@ -38,9 +40,21 @@ void MIntNodeWrapper::subscriberCallback()
 		if (i % 10 == 0) { for (int n : test_deque) {std::cout << n << ", ";} std::cout << std::endl;}
 	}
 	for (int n : test_deque) {std::cout << n << ", ";} std::cout << std::endl;
+	*/
 };
+
+void MIntNodeWrapper::mainLoop() {
+	while ros::ok(){
+		auto pose_s = PoseStamped();
+		chatter_pub.publish(pose_s);
+	}
+	
+}
 
 int main(int argc, char **argv)
 {
 	ros::init(argc, argv, "motion_intent");
+
+	MIntNodeWrapper minty();
+	minty.mainLoop();
 }
