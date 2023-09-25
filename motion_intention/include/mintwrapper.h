@@ -73,8 +73,7 @@ void MIntSpline::updateSpline(Eigen::ArrayXf current_state, Eigen::ArrayXXf pred
 	return;
 };
 
-Eigen::ArrayXf MIntSpline::sampleSpline(double sample_time)
-{
+Eigen::ArrayXf MIntSpline::sampleSpline(double sample_time){
 	if (max_sample_time < sample_time)
 	{
 		sample_time = max_sample_time;
@@ -86,8 +85,7 @@ Eigen::ArrayXf MIntSpline::sampleSpline(double sample_time)
 	return sampled_point;
 };
 
-Eigen::ArrayXf MIntSpline::sampleEquilibriumPoint()
-{
+Eigen::ArrayXf MIntSpline::sampleEquilibriumPoint(){
 	Eigen::ArrayXf sampled_point(_spline_dim, 1);
 	auto end = std::chrono::steady_clock::now();
 	std::chrono::duration<double> diff = end - spline_timer_start;

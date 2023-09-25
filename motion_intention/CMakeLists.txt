@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(motion_intention)
 
+set(Torch_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lib/libtorch/share/cmake/Torch)
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
 
@@ -16,6 +17,7 @@ find_package(catkin REQUIRED COMPONENTS
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
+find_package(Torch REQUIRED)
 
 
 ## Uncomment this if the package has a setup.py. This macro ensures
@@ -147,9 +149,9 @@ add_executable(${PROJECT_NAME}_node src/motion_intention_node.cpp)
 # add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-# target_link_libraries(${PROJECT_NAME}_node
-#   ${catkin_LIBRARIES}
-# )
+ target_link_libraries(${PROJECT_NAME}_node
+   ${catkin_LIBRARIES}
+   ${TORCH_LIBRARIES})
 
 #############
 ## Install ##

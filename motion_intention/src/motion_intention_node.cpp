@@ -10,27 +10,39 @@
 
 
 class MIntNodeWrapper{
+	private:
+	ros::NodeHandle n;
+	std::deque<Eigen::ArrayXf> input_deque;
+	
+
+	//ros::Time start_time = ros::Time::now(); 
+	static void subscriberCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
+
 	public:
-		MIntNodeWrapper(){};
+		//MIntNodeWrapper(){};
 
 		MIntNodeWrapper(){
 			ros::NodeHandle n;
 			
-			ros::Subscriber sub = n.subscribe("ee_pose", 1, subscriberCallback); // assumes it's reading a task_space PoseStamped message
-			ros::Publisher chatter_pub = n.advertise<geometry_msgs::PoseStamped>("ee_pose_eq", 1);
+			sub = n.subscribe("ee_pose", 1, subscriberCallback); // assumes it's reading a task_space PoseStamped message
+			//ROS_INFO("Got after sub def.");
+			//ros::Publisher pub = n.advertise<geometry_msgs::PoseStamped>("ee_pose_eq", 1);
+			pub = n.advertise<geometry_msgs::PoseStamped>("ee_pose_eq", 1);
+			//ROS_INFO("Got after pub def.");
 		};
+	void mainLoop();
+	ros::Subscriber sub;
+	ros::Publisher pub;
 
-
-	private:
-	std::deque<Eigen::ArrayXf> input_deque;
-	//ros::Time start_time = ros::Time::now(); 
-	void subscriberCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);  
+	
+	
 };
 
 
 void MIntNodeWrapper::subscriberCallback(const geometry_msgs::PoseStamped::ConstPtr& msg){
-	position_new = msg -> position;
-
+	geometry_msgs::Point position_new;
+	position_new = msg -> pose.position;
+	
 	/*
 	int max_deque_size = 10;
 	for (int i = 0; i < 100; i++)
@@ -41,20 +53,24 @@ void MIntNodeWrapper::subscriberCallback(const geometry_msgs::PoseStamped::Const
 	}
 	for (int n : test_deque) {std::cout << n << ", ";} std::cout << std::endl;
 	*/
+	return;
 };
 
 void MIntNodeWrapper::mainLoop() {
-	while ros::ok(){
-		auto pose_s = PoseStamped();
-		chatter_pub.publish(pose_s);
-	}
 	
-}
+	ros::Rate r(500);
+	while (ros::ok()){
+		geometry_msgs::PoseStamped pose_s; //= geometry_msgs::PoseStamped();
+		pub.publish(pose_s);
+		ros::spinOnce();
+		r.sleep();
+	}
+	return;	
+};
 
 int main(int argc, char **argv)
 {
 	ros::init(argc, argv, "motion_intent");
-
-	MIntNodeWrapper minty();
+	MIntNodeWrapper minty;
 	minty.mainLoop();
 }
