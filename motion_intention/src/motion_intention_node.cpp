@@ -25,10 +25,7 @@ class MIntNodeWrapper{
 			ros::NodeHandle n;
 			
 			sub = n.subscribe("ee_pose", 1, subscriberCallback); // assumes it's reading a task_space PoseStamped message
-			//ROS_INFO("Got after sub def.");
-			//ros::Publisher pub = n.advertise<geometry_msgs::PoseStamped>("ee_pose_eq", 1);
 			pub = n.advertise<geometry_msgs::PoseStamped>("ee_pose_eq", 1);
-			//ROS_INFO("Got after pub def.");
 		};
 	void mainLoop();
 	ros::Subscriber sub;
