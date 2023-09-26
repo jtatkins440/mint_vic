@@ -1,0 +1,6 @@
+inference_rate: 500.0
+input_sample_rate: 200.0
+model_input_indices:
+ - 0
+ - 1
+

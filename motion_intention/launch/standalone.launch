@@ -1,4 +1,7 @@
 <launch>
     <node name="pose_pub" pkg="motion_intention" type="test_pub.py" />
+    <group ns="mint">
+    	<rosparam file="$(find motion_intention)/config/mint_config.yaml" />
     <node name="mint_pub" pkg="motion_intention" type="motion_intention_node" />
+    </group>
 </launch>
