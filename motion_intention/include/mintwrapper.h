@@ -103,6 +103,8 @@ Eigen::ArrayXf MIntSpline::sampleEquilibriumPoint(){
 
 class MIntWrapper{
 	public:
+	MIntWrapper(){};
+	
 	MIntWrapper(std::string model_path, std::string json_path) : mint_path(model_path), param_path(json_path) {
 		// guard this in a try/catch block!
 		
