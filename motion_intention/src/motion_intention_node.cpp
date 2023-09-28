@@ -8,6 +8,8 @@
 #include <memory>
 #include <deque>
 #include <chrono>
+#include <mutex>
+#include <thread>
 
 class MIntNodeWrapper{
 	public:
@@ -36,13 +38,17 @@ class MIntNodeWrapper{
 
 			MIntWrapper mintnet(model_weights_path, hyperparam_weights_path);
 
-			ros::param::param<float>("sample_time", sample_time, 0.005);
-			ros::param::param<float>("allowable_time", allowable_time_tolerance, 0.0005);
+			ros::param::param<double>("sample_time", sample_time, 0.005);
+			ros::param::param<double>("allowable_time", allowable_time_tolerance, 0.0005);
 			ros::param::param<int>("inference_rate", inference_rate, 500);
 			ros::param::param<int>("pose_deque_min_size", pose_deque_min_size, 3);
+			//ros::param::param<int>("position_size", position_size, 3);
 
 		};
+
 		void mainLoop();
+		void dequeHandler();
+
 		ros::Subscriber sub;
 		ros::Publisher pub;
 		MIntWrapper mintnet;
@@ -50,27 +56,61 @@ class MIntNodeWrapper{
 		ros::NodeHandle nh;
 		std::deque<Eigen::ArrayXf> input_deque; // deque of inputs (vel and acc) to the MIntNet
 		std::deque<Eigen::ArrayXf> pose_deque; // deque of past states (position/orientation) of same size used for other fitting methods
+		Eigen::Matrix<float, 3, 1> current_position; // I hate hardcoding this but the static restriction on the callback is making it hard not to. Find a fix when there's time.
 		int pose_deque_min_size;
-		float sample_time;
-		float allowable_time_tolerance;
+		double sample_time;
+		double allowable_time_tolerance;
 		int inference_rate;
+		int position_size;
+
 		bool b_deque_ready = false; // flag for toggling if deque is full or not
 		bool b_mint_ready = false; // flag for toggling if mint method is fitted and ready to give predictions
 
 		std::string model_weights_path, hyperparam_weights_path;
 		//MIntWrapper mintnet;
-		auto start{std::chrono::steady_clock::now()};
 
 		//ros::Time start_time = ros::Time::now(); 
 		static void subscriberCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
 		void updateDeque(Eigen::ArrayXf new_pose, float dt);
 
 	private:
-		
+		std::mutex mtx;
 };
 
-
 void MIntNodeWrapper::subscriberCallback(const geometry_msgs::PoseStamped::ConstPtr& msg){
+	geometry_msgs::Point position_new;
+	position_new = msg -> pose.position;
+	
+	Eigen::Matrix<float, 3, 1> current_position;
+	current_position << position_new.x, position_new.y, position_new.z;
+
+	return;
+};
+
+void MIntNodeWrapper::dequeHandler(){
+	std::chrono::steady_clock::time_point time_start = std::chrono::steady_clock::now();
+	std::chrono::steady_clock::time_point time_current = std::chrono::steady_clock::now();
+	bool update_deque_flag = true;
+
+	while (update_deque_flag){
+		time_current = std::chrono::steady_clock::now();
+		std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(time_current - time_start);
+		if (sample_time <= time_span.count()){
+			// if enough time has passed, update the deque and refit the spine
+			Eigen::ArrayXf pose_new(mintnet.output_chn_size, 1);
+			pose_new << current_position(0), current_position(1); // x and y position only!
+			updateDeque(pose_new, time_span.count());
+			if (b_deque_ready){
+				mtx.lock();
+				mintnet.fit(pose_new, input_deque);
+				mtx.unlock();
+			}
+		}
+	} 
+};
+
+/*
+void MIntNodeWrapper::subscriberCallback(){
 	geometry_msgs::Point position_new;
 	position_new = msg -> pose.position;
 	
@@ -98,7 +138,6 @@ void MIntNodeWrapper::subscriberCallback(const geometry_msgs::PoseStamped::Const
 		return;
 	};
 
-	/*
 	int max_deque_size = 10;
 	for (int i = 0; i < 100; i++)
 	{
@@ -107,9 +146,10 @@ void MIntNodeWrapper::subscriberCallback(const geometry_msgs::PoseStamped::Const
 		if (i % 10 == 0) { for (int n : test_deque) {std::cout << n << ", ";} std::cout << std::endl;}
 	}
 	for (int n : test_deque) {std::cout << n << ", ";} std::cout << std::endl;
-	*/
+	
 	return;
 };
+*/
 
 void MIntNodeWrapper::updateDeque(Eigen::ArrayXf new_pose, float dt){
 	// WIP, have different behavior for different motion intention methods
