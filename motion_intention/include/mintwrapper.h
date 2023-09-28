@@ -179,15 +179,15 @@ class MIntWrapper{
 	void fit(Eigen::ArrayXf current_state, std::deque<Eigen::ArrayXf> input);
 	void fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input);
 	Eigen::ArrayXf getEquilibriumPoint();
+	int input_chn_size;
+	int output_chn_size;
+	int input_seq_length;
+	int output_seq_length;
 
 	private:
 	std::string mint_path;
 	std::string param_path;
 	json params;
-	int input_chn_size;
-	int output_chn_size;
-	int input_seq_length;
-	int output_seq_length;
 	Eigen::ArrayXXf input_scaling_array;
 	Eigen::ArrayXXf output_scaling_array;
 	torch::jit::script::Module mint_module;

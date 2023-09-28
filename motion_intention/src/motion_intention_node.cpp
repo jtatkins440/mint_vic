@@ -11,9 +11,10 @@
 
 class MIntNodeWrapper{
 	private:
-	ros::NodeHandle n;
+	ros::NodeHandle nh;
 	std::deque<Eigen::ArrayXf> input_deque;
-	
+	float inference_rate;
+	float input_sample_rate;
 
 	//ros::Time start_time = ros::Time::now(); 
 	static void subscriberCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
@@ -22,10 +23,11 @@ class MIntNodeWrapper{
 		//MIntNodeWrapper(){};
 
 		MIntNodeWrapper(){
-			ros::NodeHandle n;
+			ros::NodeHandle nh;
+			//nh.getParam
 			
-			sub = n.subscribe("ee_pose", 1, subscriberCallback); // assumes it's reading a task_space PoseStamped message
-			pub = n.advertise<geometry_msgs::PoseStamped>("ee_pose_eq", 1);
+			sub = nh.subscribe("/ee_pose", 1, subscriberCallback); // assumes it's reading a task_space PoseStamped message
+			pub = nh.advertise<geometry_msgs::PoseStamped>("/ee_pose_eq", 1);
 		};
 	void mainLoop();
 	ros::Subscriber sub;
