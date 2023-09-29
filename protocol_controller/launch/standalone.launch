@@ -1,0 +1,4 @@
+<launch>
+    <!-- Start the controller_smach script from the protocol_controller package -->
+    <node name="protocol_controller_node" pkg="protocol_controller" type="controller_smach.py" output="screen" />
+</launch>
