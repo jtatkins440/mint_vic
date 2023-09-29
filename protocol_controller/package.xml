@@ -59,7 +59,6 @@
   <exec_depend>smach</exec_depend>
   <exec_depend>smach_ros</exec_depend>
   <build_depend>message_generation</build_depend>
-  <run_depend>message_runtime</run_depend>
 
 
   <!-- The export tag contains other, unspecified, tags -->

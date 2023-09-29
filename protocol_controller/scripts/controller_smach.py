@@ -1,8 +1,9 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import rospy
 import smach
 import smach_ros
+from smach_ros import SimpleActionState
 
 
 # Define the individual states
@@ -77,8 +78,16 @@ def main():
         smach.StateMachine.add('TRIAL_SET', sm_trial_set,
                                transitions={'trial_complete': 'success', 'trial_failed': 'failure'})
 
+    # Create and start the introspection server
+    sis = smach_ros.IntrospectionServer('server_name', sm_top, '/SM-ROOT')
+    sis.start()
+
     # Execute the state machine
     outcome = sm_top.execute()
+
+    # Wait for ctrl-c to stop the application
+    rospy.spin()
+    sis.stop()
 
 
 if __name__ == '__main__':
