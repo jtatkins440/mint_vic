@@ -46,26 +46,35 @@ void MIntSpline::updateSpline(Eigen::ArrayXf current_state, Eigen::ArrayXXf pred
 
 	// shifts relative positions to global 
 	//std::cout << "spline_dim: " << _spline_dim << std::endl;
+	
 	for (int i = 0; i < _spline_dim; i++) {
 		//std::cout << "updateSpline, interation " << i << std::endl;
+		//std::cout << "pred_pos:  " << pred_pos << std::endl;
+		//std::cout << "current_state:  " << current_state << std::endl;
 		for (int j = 0; j < pred_pos.cols(); j++) {
+			//std::cout << "i: " << i << ", j:" << j << std::endl;
 			pred_pos(i, j) = pred_pos(i, j) + current_state(i);
 		}
 		std::vector<double> spline_points;
 
 		//spline_points.push_back(current_state(i)); // for 
 		for (int j = 0; j < pred_pos.cols(); j++) {
+			//std::cout << "i: " << i << ", j:" << j << std::endl;
 			spline_points.push_back((double) pred_pos(i, j));
 		}
 
+		//std::cout << "Before end_vel_est..." << std::endl;
 		double end_vel_est = (pred_pos(i, pred_pos.cols()-1) - pred_pos(i, pred_pos.cols()-2)) / (spline_time_vec[spline_time_vec.size()-1] - spline_time_vec[spline_time_vec.size()-2]);
-		spline_vec[i].set_boundary(tk::spline::first_deriv, current_state(i + _spline_dim), 
+		//std::cout << "after end_vel_est..." << std::endl;
+		tk::spline s;
+		s.set_boundary(tk::spline::first_deriv, (double) current_state(i + _spline_dim), 
 			tk::spline::first_deriv, end_vel_est);
 
 		//std::cout << "times: " << spline_time_vec << std::endl;
 		//std::cout << "points: " << spline_points << std::endl;
 
-		spline_vec[i].set_points(spline_time_vec, spline_points); // one spline for each dim of the prediction
+		s.set_points(spline_time_vec, spline_points); // one spline for each dim of the prediction
+		spline_vec[i] = s;
 		//std::cout << "after set_points..." << std::endl;
 	}
 	//std::cout << "before spliner_timer_start..." << std::endl;
@@ -262,8 +271,11 @@ Eigen::ArrayXXf MIntWrapper::forward(Eigen::ArrayXXf input)
 
 void MIntWrapper::fit(Eigen::ArrayXf current_state, std::deque<Eigen::ArrayXf> input)
 {
+	//std::cout << "In mintwrapper, before forward." << std::endl;
 	auto pred_pos = forward(input);
+	//std::cout << "In mintwrapper, before updateSpline." << std::endl;
 	mintspline.updateSpline(current_state, pred_pos);
+	//std::cout << "In mintwrapper, after updateSpline." << std::endl;
 };
 
 void MIntWrapper::fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input)

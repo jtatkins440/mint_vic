@@ -140,15 +140,26 @@ void MIntNodeWrapper::dequeHandler(){
 		//Eigen::ArrayXf pose_new(mintnet.output_chn_size, 1);
 		Eigen::Array<float, 2, 1> pose_new;
 		pose_new << current_position(0), current_position(1); // x and y position only!
-		std::cout << "Before updateDeque..." << std::endl;
+		//std::cout << "Before updateDeque..." << std::endl;
 		updateDeque(pose_new, time_span.count());
-		std::cout << "After updateDeque..." << std::endl;
+		//std::cout << "After updateDeque..." << std::endl;
 		if (b_deque_ready){
+			Eigen::Array<float, 4, 1> current_state;
+			Eigen::Array<float, 4, 1> current_vel_acc;
+			current_vel_acc = input_deque[input_deque.size() - 1];
+			current_state << current_position(0), current_position(1), current_vel_acc(0), current_vel_acc(1);
 			//mtx.lock();
-			std::cout << "Before mintnet.fit(pose_new, input_deque);..." << std::endl;
-			mintnet.fit(pose_new, input_deque);
-			std::cout << "After mintnet.fit(pose_new, input_deque);..." << std::endl;
+			//std::cout << "Before mintnet.fit(pose_new, input_deque);..." << std::endl;
+			//std::cout << "current_state: " << current_state << std::endl;
+			//std::cout << "input_deque: ";
+			//for (int idx = 0; idx < input_deque.size(); idx++) {
+			//	std::cout << input_deque[idx];
+			//} 
+			std::cout << std::endl;
+			mintnet.fit(current_state, input_deque); // expects [current_position; current_velocity] for first argument!
+			//std::cout << "After mintnet.fit(pose_new, input_deque);..." << std::endl;
 			//mtx.unlock();
+			b_mint_ready = true;
 		}
 		std::chrono::steady_clock::time_point time_start = std::chrono::steady_clock::now();
 	}
@@ -216,9 +227,9 @@ void MIntNodeWrapper::updateDeque(Eigen::ArrayXf new_pose, float dt){
 	}
 
 	//std::cout << "Before input_deque.size()" << std::endl;
-	std::cout << "mintnet.input_seq_length: " << mintnet.input_seq_length << std::endl;
-	std::cout << "input_deque_seq_length: " << input_deque_seq_length << std::endl;
-	std::cout << "(input_deque.size() >= mintnet.input_seq_length): " << (input_deque.size() >= mintnet.input_seq_length) << std::endl;
+	//std::cout << "mintnet.input_seq_length: " << mintnet.input_seq_length << std::endl;
+	//std::cout << "input_deque_seq_length: " << input_deque_seq_length << std::endl;
+	//std::cout << "(input_deque.size() >= mintnet.input_seq_length): " << (input_deque.size() >= mintnet.input_seq_length) << std::endl;
 	if (input_deque.size() >= input_deque_seq_length) {
 		input_deque.pop_front();
 		b_deque_ready = true;
@@ -258,6 +269,7 @@ void MIntNodeWrapper::mainLoop() {
 			Eigen::ArrayXf eq_pose = mintnet.getEquilibriumPoint();
 			pose_s.pose.position.x = eq_pose(0);
 			pose_s.pose.position.y = eq_pose(1);
+			std::cout << "Got new eq_pose! It's: "<< eq_pose << std::endl;
 		}
 
 		pub.publish(pose_s);
@@ -273,7 +285,7 @@ int main(int argc, char **argv)
 	ros::init(argc, argv, "motion_intent");
 	MIntNodeWrapper minty;
 	//minty.startDequeHandler();
-	std::cout << "DequeHandler started!" << std::endl;
+	//std::cout << "DequeHandler started!" << std::endl;
 	//std::thread dequeHandlerThread (&MIntNodeWrapper::dequeHandler, this); 
 	minty.mainLoop();
 }
