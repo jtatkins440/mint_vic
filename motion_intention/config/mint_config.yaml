@@ -1,6 +1,5 @@
-inference_rate: 500.0
-input_sample_rate: 200.0
-model_input_indices:
- - 0
- - 1
-
+sample_time: 0.005
+allowable_time: 0.0005
+inference_rate: 500
+pose_deque_min_size: 3
+position_size: 3

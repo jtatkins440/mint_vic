@@ -13,6 +13,8 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   std_msgs
   geometry_msgs
+  tf
+  tf2
 )
 
 ## System dependencies are found with CMake's conventions
@@ -108,7 +110,7 @@ find_package(Torch REQUIRED)
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES motion_intention
-  CATKIN_DEPENDS roscpp rospy std_msgs
+  CATKIN_DEPENDS roscpp rospy std_msgs tf2_ros
   DEPENDS system_lib
 )
 

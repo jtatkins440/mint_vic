@@ -13,7 +13,6 @@ class MIntSpline{
 
 		MIntSpline(std::vector<double> spline_time, int spline_dim, double lead_time) {
 			// put in the current state's time and append the times for the prediction vector
-			//spline_time_vec.push_back(0.0);
 			for (int i = 0; i < spline_time.size(); i++) {
 				spline_time_vec.push_back(spline_time[i]);
 			}
@@ -45,30 +44,26 @@ class MIntSpline{
 void MIntSpline::updateSpline(Eigen::ArrayXf current_state, Eigen::ArrayXXf pred_pos) {
 
 	// shifts relative positions to global 
-	//std::cout << "spline_dim: " << _spline_dim << std::endl;
+	std::vector<tk::spline> spline_vec_temp;
 	for (int i = 0; i < _spline_dim; i++) {
-		//std::cout << "updateSpline, interation " << i << std::endl;
 		for (int j = 0; j < pred_pos.cols(); j++) {
 			pred_pos(i, j) = pred_pos(i, j) + current_state(i);
 		}
 		std::vector<double> spline_points;
 
-		//spline_points.push_back(current_state(i)); // for 
 		for (int j = 0; j < pred_pos.cols(); j++) {
 			spline_points.push_back((double) pred_pos(i, j));
 		}
 
 		double end_vel_est = (pred_pos(i, pred_pos.cols()-1) - pred_pos(i, pred_pos.cols()-2)) / (spline_time_vec[spline_time_vec.size()-1] - spline_time_vec[spline_time_vec.size()-2]);
-		spline_vec[i].set_boundary(tk::spline::first_deriv, current_state(i + _spline_dim), 
+		tk::spline s;
+		s.set_boundary(tk::spline::first_deriv, (double) current_state(i + _spline_dim), 
 			tk::spline::first_deriv, end_vel_est);
 
-		//std::cout << "times: " << spline_time_vec << std::endl;
-		//std::cout << "points: " << spline_points << std::endl;
-
-		spline_vec[i].set_points(spline_time_vec, spline_points); // one spline for each dim of the prediction
-		//std::cout << "after set_points..." << std::endl;
+		s.set_points(spline_time_vec, spline_points); // one spline for each dim of the prediction
+		spline_vec_temp.push_back(s);
 	}
-	//std::cout << "before spliner_timer_start..." << std::endl;
+	spline_vec.swap(spline_vec_temp);
 	spline_timer_start = std::chrono::steady_clock::now(); // time point for when the spline was last updated
 	return;
 };
@@ -103,6 +98,8 @@ Eigen::ArrayXf MIntSpline::sampleEquilibriumPoint(){
 
 class MIntWrapper{
 	public:
+	MIntWrapper(){};
+	
 	MIntWrapper(std::string model_path, std::string json_path) : mint_path(model_path), param_path(json_path) {
 		// guard this in a try/catch block!
 		
@@ -260,13 +257,13 @@ Eigen::ArrayXXf MIntWrapper::forward(Eigen::ArrayXXf input)
 
 void MIntWrapper::fit(Eigen::ArrayXf current_state, std::deque<Eigen::ArrayXf> input)
 {
-	auto pred_pos = forward(input);
+	Eigen::ArrayXXf pred_pos = forward(input);
 	mintspline.updateSpline(current_state, pred_pos);
 };
 
 void MIntWrapper::fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input)
 {
-	auto pred_pos = forward(input);
+	Eigen::ArrayXXf pred_pos = forward(input);
 	mintspline.updateSpline(current_state, pred_pos);
 };
 
