@@ -8,8 +8,8 @@ from geometry_msgs.msg import TransformStamped
 import tf
 import tf2_ros
 
-def talker(ang_vel = 0.1, radius = 0.01):
-    pub = rospy.Publisher('ee_pose', PoseStamped, queue_size=5)
+def talker(ang_vel = 0.00001, radius = 0.01):
+    pub = rospy.Publisher('ee_pose', PoseStamped, queue_size=2)
     rospy.init_node('test_ee_pose_pub', anonymous=True)
     rate = rospy.Rate(500)
 
@@ -33,8 +33,9 @@ def talker(ang_vel = 0.1, radius = 0.01):
     while not rospy.is_shutdown():
         pose_s = PoseStamped()
         pose_s.header.stamp = rospy.Time.now()
-        pose_s.pose.position.x = radius * math.cos(ang_vel * pose_s.header.stamp.secs)
-        pose_s.pose.position.y = radius * math.sin(ang_vel * pose_s.header.stamp.secs)
+        used_time = pose_s.header.stamp.secs + (pose_s.header.stamp.nsecs * 1e-6)
+        pose_s.pose.position.x = radius * math.cos(ang_vel * used_time)
+        pose_s.pose.position.y = radius * math.sin(ang_vel * used_time)
         pose_s.pose.orientation.w = 1.0
         pose_s.header.frame_id = "ee"
         pub.publish(pose_s)
