@@ -46,7 +46,7 @@ void MIntSpline::updateSpline(Eigen::ArrayXf current_state, Eigen::ArrayXXf pred
 
 	// shifts relative positions to global 
 	//std::cout << "spline_dim: " << _spline_dim << std::endl;
-	
+	std::vector<tk::spline> spline_vec_temp;
 	for (int i = 0; i < _spline_dim; i++) {
 		//std::cout << "updateSpline, interation " << i << std::endl;
 		//std::cout << "pred_pos:  " << pred_pos << std::endl;
@@ -74,9 +74,12 @@ void MIntSpline::updateSpline(Eigen::ArrayXf current_state, Eigen::ArrayXXf pred
 		//std::cout << "points: " << spline_points << std::endl;
 
 		s.set_points(spline_time_vec, spline_points); // one spline for each dim of the prediction
-		spline_vec[i] = s;
+		spline_vec_temp.push_back(s);
+		//spline_vec[i] = s;
+
 		//std::cout << "after set_points..." << std::endl;
 	}
+	spline_vec.swap(spline_vec_temp);
 	//std::cout << "before spliner_timer_start..." << std::endl;
 	spline_timer_start = std::chrono::steady_clock::now(); // time point for when the spline was last updated
 	return;
@@ -272,15 +275,17 @@ Eigen::ArrayXXf MIntWrapper::forward(Eigen::ArrayXXf input)
 void MIntWrapper::fit(Eigen::ArrayXf current_state, std::deque<Eigen::ArrayXf> input)
 {
 	//std::cout << "In mintwrapper, before forward." << std::endl;
-	auto pred_pos = forward(input);
-	//std::cout << "In mintwrapper, before updateSpline." << std::endl;
+	//std::cout << "In mintwrapper, input:";
+	//for (int i = 0; i < input.size(); i++) {std::cout << input[i];} std::cout << std::endl;
+	Eigen::ArrayXXf pred_pos = forward(input);
+	std::cout << "In mintwrapper, pred_pos:" << pred_pos << std::endl;
 	mintspline.updateSpline(current_state, pred_pos);
 	//std::cout << "In mintwrapper, after updateSpline." << std::endl;
 };
 
 void MIntWrapper::fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input)
 {
-	auto pred_pos = forward(input);
+	Eigen::ArrayXXf pred_pos = forward(input);
 	mintspline.updateSpline(current_state, pred_pos);
 };
 

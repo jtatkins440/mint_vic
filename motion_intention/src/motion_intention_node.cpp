@@ -11,6 +11,9 @@
 #include <mutex>
 #include <thread>
 
+#include <tf2_ros/transform_broadcaster.h>
+#include <geometry_msgs/TransformStamped.h>
+
 class MIntNodeWrapper{
 	public:
 		//MIntNodeWrapper(){};
@@ -21,9 +24,10 @@ class MIntNodeWrapper{
 			ros::NodeHandle nh("mint");
 			//nh.getParam
 			
-			sub = nh.subscribe("/ee_pose", 1, subscriberCallback); // assumes it's reading a task_space PoseStamped message
-			pub = nh.advertise<geometry_msgs::PoseStamped>("/ee_pose_eq", 1);
+			sub = nh.subscribe("/ee_pose", 5, &MIntNodeWrapper::subscriberCallback, this); // assumes it's reading a task_space PoseStamped message
+			pub = nh.advertise<geometry_msgs::PoseStamped>("/ee_pose_eq", 5);
 
+	
 			/*
 			if (ros::param::get("model_weights_path", model_weights_path)) {
 				std::cout << "Recieved model_weights_path as " << model_weights_path << std::endl;
@@ -97,11 +101,12 @@ class MIntNodeWrapper{
 		bool b_deque_ready = false; // flag for toggling if deque is full or not
 		bool b_mint_ready = false; // flag for toggling if mint method is fitted and ready to give predictions
 
+
 		std::string model_weights_path, hyperparam_weights_path;
 		//MIntWrapper mintnet;
 
 		//ros::Time start_time = ros::Time::now(); 
-		static void subscriberCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
+		void subscriberCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
 		void updateDeque(Eigen::ArrayXf new_pose, float dt);
 
 		//std::thread dequeHandlerThread;
@@ -121,9 +126,13 @@ void MIntNodeWrapper::subscriberCallback(const geometry_msgs::PoseStamped::Const
 	geometry_msgs::Point position_new;
 	position_new = msg -> pose.position;
 	
-	Eigen::Matrix<float, 3, 1> current_position;
-	current_position << position_new.x, position_new.y, position_new.z;
+	Eigen::Matrix<float, 3, 1> current_position_temp;
+	current_position_temp << position_new.x, position_new.y, position_new.z;
 
+	current_position.swap(current_position_temp);
+
+	std::cout << "subscriberCallback, position_new.x: " << position_new.x << ", position_new.y: " << position_new.y << std::endl;
+	//std::cout << "subscriberCallback, current_position: " << current_position << std::endl;
 	return;
 };
 
@@ -148,6 +157,7 @@ void MIntNodeWrapper::dequeHandler(){
 			Eigen::Array<float, 4, 1> current_vel_acc;
 			current_vel_acc = input_deque[input_deque.size() - 1];
 			current_state << current_position(0), current_position(1), current_vel_acc(0), current_vel_acc(1);
+			std::cout << "dequeHandler, current_state: " << current_state << std::endl;
 			//mtx.lock();
 			//std::cout << "Before mintnet.fit(pose_new, input_deque);..." << std::endl;
 			//std::cout << "current_state: " << current_state << std::endl;
@@ -211,6 +221,7 @@ void MIntNodeWrapper::subscriberCallback(){
 };
 */
 
+// this assumes the deque will be given inputs of global positions. Ideally we'd just have velocity and acceleration inputs from the admittance controller.
 void MIntNodeWrapper::updateDeque(Eigen::ArrayXf new_pose, float dt){
 	// WIP, have different behavior for different motion intention methods
 	std::cout << "b_deque_ready: " << b_deque_ready << std::endl;
@@ -236,6 +247,7 @@ void MIntNodeWrapper::updateDeque(Eigen::ArrayXf new_pose, float dt){
 	}
 
 	//std::cout << "Before pose_deque.push_back" << std::endl;
+	std::cout << "new_pose: " << new_pose << std::endl;
 	pose_deque.push_back(new_pose);
 	if (pose_deque.size() > pose_deque_min_size){
 		//std::cout << "Before vel_est" << std::endl;
@@ -245,7 +257,7 @@ void MIntNodeWrapper::updateDeque(Eigen::ArrayXf new_pose, float dt){
 		Eigen::Array<float, 4, 1> new_input;
 		//std::cout << "vel_est: " << vel_est << " acc_est: " << acc_est << std::endl;
 		new_input << vel_est, acc_est;
-		//std::cout << "new_input: " << new_input << std::endl;
+		std::cout << "new_input: " << new_input << std::endl;
 		//std::cout << "Before input_deque.push_back(new_input);" << std::endl;
 		input_deque.push_back(new_input);
 	}
@@ -260,6 +272,17 @@ void MIntNodeWrapper::updateDeque(Eigen::ArrayXf new_pose, float dt){
 void MIntNodeWrapper::mainLoop() {
 	
 	ros::Rate r(inference_rate);
+
+	static tf2_ros::TransformBroadcaster br;
+	geometry_msgs::TransformStamped transformStamped;
+	transformStamped.header.frame_id = "world";
+	transformStamped.child_frame_id = "ee_eq";
+	transformStamped.header.stamp = ros::Time::now();
+	transformStamped.transform.rotation.x = 0.0;
+	transformStamped.transform.rotation.y = 0.0;
+	transformStamped.transform.rotation.z = 0.0;
+	transformStamped.transform.rotation.w = 1.0;
+
 	while (ros::ok()){
 		geometry_msgs::PoseStamped pose_s; // empty posestamped message
 
@@ -269,10 +292,17 @@ void MIntNodeWrapper::mainLoop() {
 			Eigen::ArrayXf eq_pose = mintnet.getEquilibriumPoint();
 			pose_s.pose.position.x = eq_pose(0);
 			pose_s.pose.position.y = eq_pose(1);
+			pose_s.pose.orientation.w = 1.0;
+			pose_s.header.frame_id = "ee_eq";
 			std::cout << "Got new eq_pose! It's: "<< eq_pose << std::endl;
+
+			transformStamped.header.stamp = ros::Time::now();
+			transformStamped.transform.translation.x = eq_pose(0);
+			transformStamped.transform.translation.x = eq_pose(1);
 		}
 
 		pub.publish(pose_s);
+		br.sendTransform(transformStamped);
 
 		ros::spinOnce();
 		r.sleep();
