@@ -1,3 +1,4 @@
+# Running the Protocol Controller with the Visualizer
 The current visualizer execution is heavily dependent on the user's system. A more modular and streamlined launch will be developed soon. 
 Until then, the following steps ought to be followed to successfully execute the state machine WITH THE VISUALIZER:
 
