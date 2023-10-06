@@ -11,9 +11,10 @@ The current metapackage has the following components:
 # More about Motion Intention
 In general, motion intention estimation is a large field of human-robotics interaction research with many different useful methods that aim to answer the problem of what the human user is trying to do. In this repo, we use a pretrained model taken from our previous work that predicts the most likely future coupled human-robot states given a history of past states trained from a mix of simulated and real recorded human-robot interaction data. For more information on the model architecture and training, see the paper [here](https://doi.org/10.1109/LRA.2023.3306646). 
 
-![Model Architecture](./docs/source/images/mintnet_architecture.png)
+<img src="./docs/source/images/mintnet_architecture.png" width="48">
 
-![Example Predictions](./docs/source/images/mintnet_predictions.png)
+<img src="./docs/source/images/mintnet_predictions.png" width="48">
+
 
 The motion_intention package impliments a wrapper for this network to make it deployable in an online setting with ROS.
 
