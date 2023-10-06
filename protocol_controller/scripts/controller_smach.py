@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import rospy
 import smach
@@ -103,7 +103,7 @@ class Init_Trial(smach.State):
                 kp[0, 0] = self.parameters.KPAP
             if hasattr(self.parameters, "KPML"):
                 kpInputted_ML = True
-                kp[1, 0] = self.parameters.KPML;
+                kp[1, 0] = self.parameters.KPML
             if hasattr(self.parameters, "KNAP"):
                 knInputted_AP = True
                 kn[0, 0] = self.parameters.KNAP
@@ -119,17 +119,127 @@ class Init_Trial(smach.State):
             if hasattr(self.parameters, "DAMPING"):
                 bInputted = True
                 b_mat[0, 0] = b_mat[1, 0] = self.parameters.DAMPING
-            if hasattr((self.parameters, "KUB")):
+            if hasattr(self.parameters, "KUB"):
                 kubInputted = True
                 k_UB = self.parameters.KUB
             if hasattr(self.parameters, "RHO"):
                 rhoInputted = True
                 rho_rate = self.parameters.RHO
 
-
             rospy.loginfo('Trial parameters received. Subject: %d, Trial: %d',
                           self.parameters.Subject_Num, self.parameters.Trial_Num)
             self.parameters = None  # Clear received parameters
+
+            # The purportedly "random" array of pathNums should depend on the number of trials we plan on conducting
+            # Current shape is (1, 25) and each path number occurs five times
+            pathArray = np.array([0, 2, 4, 3, 1, 3, 4, 0, 1, 0, 2, 3, 4, 2, 1, 0, 4, 1, 3, 2, 3, 1, 4, 2, 0])
+
+            # Definition of target points
+            targetx = np.array([
+                [0, 6, -5, 8, -1, 0, 5.7, -2.2, 3.1, -9, 0],
+                [0, 9.6, 0.2, -7, 3.4, 0, 7.3, 2.1, -4, 8.7, 0],
+                [0, -9.6, -0.2, 7, -3.4, 0, 9.2, -5.4, 0.4, 5.4, 0],
+                [0, -6.4, -1.1, 4.7, -8.9, 0, -9.9, -3.6, -8.6, 5.1, 0],
+                [0, -9.6, -0.2, 7, -3.4, 0, 5.7, -2.2, 3.1, -9, 0],
+                [0, -6.4, -1.1, 4.7, -8.9, 0, 6, -5, 8, -1, 0],
+                [0, -9.9, -3.6, -8.6, 5.1, 0, 9.6, 0.2, -7, 3.4, 0]
+            ])
+
+            targety = np.array([
+                [0, 8, -7, -9, 8, 0, 9.8, 8.5, -10, 5.2, 0],
+                [0, 8.4, -3.8, -6.9, 9.7, 0, 5.6, -9.6, 8.7, 9.8, 0],
+                [0, 8.2, -7, -6.1, 9.8, 0, 6.8, -5.8, 8.4, -4, 0],
+                [0, 5.6, -9.6, 8.7, 9.8, 0, 8.2, -7, -6.1, 9.8, 0],
+                [0, 8.2, -7, -6.1, 9.8, 0, 9.8, 8.5, -10, 5.2, 0],
+                [0, 5.6, -9.6, 8.7, 9.8, 0, 8, -7, -9, 8, 0],
+                [0, 8.2, -7, -6.1, 9.8, 0, 8.4, -3.8, -6.9, 9.7, 0]
+            ])
+
+            # Array initialization
+            meas_torque = np.zeros(7)
+
+            # Variables related to target reaching
+            endEffectorXY = np.array([[0], [0]])
+            neutralXY = np.array([[0], [0]])
+            targetXY = np.array([[0], [0]])
+            targetXYold = np.array([[0], [0]])
+            temptarget = np.array([[0.1], [0]])
+            ycenter = 0.76
+            withinErrorBound = False  # Assuming default as False, adjust as needed
+            targetReached = False
+
+            # Force Related Variables
+            ftx = 0.0  # Force x-direction (filtered)
+            fty = 0.0  # Force y-direction (filtered)
+            ftx_un = 0.0  # Force x-direction (unfiltered)
+            fty_un = 0.0  # Force y-direction (unfiltered)
+            zerox = 0.0  # Force x-baseline
+            zeroy = 0.0  # Force y-baseline
+            ftx_0 = 0.0  # Part of force filtering calc
+            fty_0 = 0.0  # Part of force filtering calc
+            al = 0.5  # exponential moving average alpha level
+
+            # Force baseline variables/flags
+            firstIt = 0  # first iteration flag
+            steady = 0  # Flag to collect average first 2000 samples of forces without moving KUKA
+
+            # Variables related to variable dampings
+            dt = 0.001
+            b_var = np.array([[30], [30]])  # Variable damping
+            b_cons = np.array([[10], [10]])
+            Bgroups = np.array([[0], [0]])  # Initializing as zero, adjust as needed
+            DEFAULT_Damping = 30.0
+
+            x_new_filt = np.array([[0], [0], [0], [0], [0], [0]])
+            x_new_filt_old = np.array([[0], [0], [0], [0], [0], [0]])
+            xdot_filt = np.array([[0], [0], [0], [0], [0], [0]])
+            xdot_filt_old = np.array([[0], [0], [0], [0], [0], [0]])
+            xdotdot_filt = np.array([[0], [0], [0], [0], [0], [0]])
+            xdotdot_filt_old = np.array([[0], [0], [0], [0], [0], [0]])
+
+            # Variables related to variable stiffness
+            intentsum = 0.0
+            distAB = 0.0
+            d1 = 0.0
+            angleproj = 0.0
+
+            # Assuming rho_rate is defined somewhere above this code
+            # For example:
+            # rho_rate = 1.0
+            rho = rho_rate * 0.01 * 20.0 * np.sqrt(2.0)
+
+            import numpy as np
+
+            # Initializing vectors and matrices
+            y_reserved = []
+            x_reserved = []
+            k_var = np.array([[0], [0]])
+            Kgroups = np.array([[0], [0]])  # Initializing as zero, adjust as needed
+            xstart = np.array([[0], [0]])
+            xend = np.array([[0], [0]])
+            xcurrent = np.array([[0], [0]])
+            bproj = np.array([[0], [0]])
+            aproj = np.array([[0], [0]])
+            amirror = np.array([[0], [0]])
+            projected = np.array([[0], [0]])
+            projected_lin = np.array([[0], [0]])
+            tempstiff = np.array([[0], [0]])
+
+            # Circle fitting
+            y_test = [7., 6., 8., 7., 5., 7.]
+            x_test = [1., 2., 5., 7., 9., 3.]
+            ysize = 0  # Assuming default as 0, adjust as needed
+            circle_a = 0.0
+            circle_b = 0.0
+            circle_r = 0.0
+
+            # Circle fitting new criteria
+            x_Mean = 0.0
+            y_Mean = 0.0
+            dist_to_center = 0.0
+            ux = 0.0
+            uy = 0.0
+
             return 'initiated'
         else:
             rospy.logwarn('Aborted due to ROS shutdown.')
