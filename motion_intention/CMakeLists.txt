@@ -15,6 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   tf
   tf2
+  message_generation
 )
 
 ## System dependencies are found with CMake's conventions
@@ -52,11 +53,11 @@ find_package(Torch REQUIRED)
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
-# add_message_files(
-#   FILES
-#   Message1.msg
+ add_message_files(
+   FILES
+   HistoryStamped.msg
 #   Message2.msg
-# )
+ )
 
 ## Generate services in the 'srv' folder
 # add_service_files(
@@ -73,10 +74,10 @@ find_package(Torch REQUIRED)
 # )
 
 ## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   std_msgs
-# )
+generate_messages(
+   DEPENDENCIES
+   std_msgs
+ )
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -111,7 +112,7 @@ catkin_package(
   INCLUDE_DIRS include
   LIBRARIES motion_intention
   CATKIN_DEPENDS roscpp rospy std_msgs tf2_ros
-  DEPENDS system_lib
+  DEPENDS system_lib message_runtime
 )
 
 ###########
