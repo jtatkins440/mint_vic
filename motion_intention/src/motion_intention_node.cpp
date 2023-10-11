@@ -1,6 +1,7 @@
 #include "ros/ros.h"
 #include "std_msgs/String.h"
 #include "geometry_msgs/PoseStamped.h"
+#include "motion_intention/HistoryStamped.h"
 #include <sstream>
 #include "mintwrapper.h"
 #include <iostream>
@@ -21,7 +22,8 @@ class MIntNodeWrapper{
 			ros::NodeHandle nh("mint");
 			//nh.getParam
 			
-			sub = nh.subscribe("/ee_pose", 2, &MIntNodeWrapper::subscriberCallback, this); // assumes it's reading a task_space PoseStamped message
+			//sub = nh.subscribe("/ee_pose", 2, &MIntNodeWrapper::subscriberCallback, this); // assumes it's reading a task_space PoseStamped message
+			sub_hist = nh.subscribe("/ee_history", 2, &MIntNodeWrapper::subscriberHistoryCallback, this); // assumes it's reading a task_space PoseStamped message
 			pub = nh.advertise<geometry_msgs::PoseStamped>("/ee_pose_eq", 2);
 
 			
@@ -45,17 +47,22 @@ class MIntNodeWrapper{
 			ros::param::param<double>("/mint/allowable_time", allowable_time_tolerance, 0.0005);
 			ros::param::param<int>("/mint/inference_rate", inference_rate, 500);
 			ros::param::param<int>("/mint/pose_deque_min_size", pose_deque_min_size, 3);
+			ros::param::param<int>("/mint/sample_time", state_dim, 2);
+			ros::param::param<int>("/mint/sample_time", seq_length, 125);
 			
 			input_deque_seq_length = mintnet.input_seq_length;
 			time_start = std::chrono::steady_clock::now();
 
+			//Eigen::Array<float, 2 * state_dim, seq_length> input_array;
 		};
 
 		void mainLoop();
 		void dequeHandler();
 		void startDequeHandler();
+		void fitHandler();
 
-		ros::Subscriber sub;
+		//ros::Subscriber sub;
+		ros::Subscriber sub_hist;
 		ros::Publisher pub;
 		MIntWrapper mintnet;
 
@@ -64,11 +71,15 @@ class MIntNodeWrapper{
 		std::deque<Eigen::ArrayXf> pose_deque; // deque of past states (position/orientation) of same size used for other fitting methods
 		int input_deque_seq_length;
 		Eigen::Matrix<float, 3, 1> current_position; // I hate hardcoding this but the static restriction on the callback is making it hard not to. Find a fix when there's time.
+		Eigen::Matrix<float, 4, 1> current_state; // [pos, vel]
+		Eigen::ArrayXXf input_array;
 		int pose_deque_min_size;
 		double sample_time;
 		double allowable_time_tolerance;
 		int inference_rate;
 		int position_size;
+		int state_dim;
+		int seq_length;
 
 		bool b_deque_ready = false; // flag for toggling if deque is full or not
 		bool b_mint_ready = false; // flag for toggling if mint method is fitted and ready to give predictions
@@ -77,6 +88,7 @@ class MIntNodeWrapper{
 		std::string model_weights_path, hyperparam_weights_path;
 
 		void subscriberCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
+		void subscriberHistoryCallback(const motion_intention::HistoryStamped::ConstPtr& msg);
 		void updateDeque(Eigen::ArrayXf new_pose, float dt);
 
 	private:
@@ -95,6 +107,51 @@ void MIntNodeWrapper::subscriberCallback(const geometry_msgs::PoseStamped::Const
 	current_position.swap(current_position_temp);
 
 	return;
+};
+
+void MIntNodeWrapper::subscriberHistoryCallback(const motion_intention::HistoryStamped::ConstPtr& msg){
+	int rows = msg->history.layout.dim[0].size;
+	int cols = msg->history.layout.dim[1].size;
+
+	std::vector<double> data = msg->history.data;
+  	Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> hist_matrix(data.data(), rows, cols);
+	//std::cout << "I received = " << std::endl << hist_matrix << std::endl;
+	//std::cout << "I received = hist_matrix.rows(): " << hist_matrix.rows() << std::endl;
+	//std::cout << "I received = hist_matrix.cols(): " << hist_matrix.cols() << std::endl;
+
+	//std::cout << "I received = input_array.rows(): " << input_array.rows() << std::endl;
+	//std::cout << "I received = input_array.cols(): " << input_array.cols() << std::endl;
+
+	input_array = (hist_matrix.cast <float> ());
+	//std::cout << "input_array = " << std::endl << input_array << std::endl;
+
+	Eigen::Matrix<float, 4, 1> current_state_temp;
+	current_state_temp << (float) msg->state[0], (float) msg->state[1], (float) msg->state[2], (float) msg->state[3];
+	current_state.swap(current_state_temp);
+	b_deque_ready = true;
+};
+
+void MIntNodeWrapper::fitHandler(){
+	std::chrono::steady_clock::time_point time_current = std::chrono::steady_clock::now();
+
+	time_current = std::chrono::steady_clock::now();
+	std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(time_current - time_start);
+	if (sample_time <= time_span.count()){
+		// if enough time has passed, update the deque and refit the spine
+		std::cout << "Updating mintnet, time_span.count(): " << time_span.count() << std::endl;
+		if (b_deque_ready){
+			//Eigen::Array<float, 4, 1> current_state;
+			//Eigen::Array<float, 4, 1> current_vel_acc;
+			//current_vel_acc = input_array[input_array.size() - 1];
+			//current_state << current_position(0), current_position(1), current_vel_acc(0), current_vel_acc(1);
+			//std::cout << "dequeHandler, current_state: " << current_state << std::endl;
+
+			mintnet.fit(current_state, input_array); // expects [current_position; current_velocity] for first argument!
+
+			b_mint_ready = true;
+		}
+		time_start = std::chrono::steady_clock::now();
+	}
 };
 
 void MIntNodeWrapper::dequeHandler(){
@@ -188,7 +245,8 @@ void MIntNodeWrapper::mainLoop() {
 	while (ros::ok()){
 		geometry_msgs::PoseStamped pose_s; // empty posestamped message
 
-		dequeHandler();
+		//dequeHandler();
+		fitHandler();
 		if (b_mint_ready){
 			// update empty message with fitted value
 			Eigen::ArrayXf eq_pose = mintnet.getEquilibriumPoint();

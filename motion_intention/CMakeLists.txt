@@ -167,6 +167,7 @@ add_executable(${PROJECT_NAME}_node src/motion_intention_node.cpp)
 ## in contrast to setup.py, you can choose the destination
 catkin_install_python(PROGRAMS
    scripts/test_pub.py
+   scripts/history_handler.py
    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
  )
 
