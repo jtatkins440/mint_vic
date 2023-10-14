@@ -9,12 +9,12 @@ from geometry_msgs.msg import TransformStamped
 import tf
 import tf2_ros
 import time
-def talker(ang_vel = 1.0, radius = 0.1):
-    pub = rospy.Publisher('ee_pose', PoseStamped, queue_size=2)
-    pub_vel = rospy.Publisher('ee_vel', TwistStamped, queue_size=2)
-    pub_acc = rospy.Publisher('ee_acc', TwistStamped, queue_size=2)
+def talker(ang_vel = 1.5, radius = 0.1):
+    pub = rospy.Publisher('ee_pose', PoseStamped, queue_size=1)
+    pub_vel = rospy.Publisher('ee_vel', TwistStamped, queue_size=1)
+    pub_acc = rospy.Publisher('ee_acc', TwistStamped, queue_size=1)
     rospy.init_node('test_ee_pose_pub', anonymous=True)
-    rate = rospy.Rate(500)
+    rate = rospy.Rate(1000)
 
     broadcaster = tf2_ros.StaticTransformBroadcaster()
     static_transformStamped = TransformStamped()
@@ -39,13 +39,13 @@ def talker(ang_vel = 1.0, radius = 0.1):
         pose_s.header.stamp = rospy.Time.now()
         used_time = time.time() - time_start #pose_s.header.stamp.secs + (pose_s.header.stamp.nsecs * 1e-6)
 
-        x_pos = radius * math.sin(ang_vel * used_time)
-        x_vel = ang_vel * radius * math.cos(ang_vel * used_time)
-        x_acc = -(ang_vel ** 2.0) * radius * math.sin(ang_vel * used_time)
+        x_pos = radius * math.cos(ang_vel * used_time)
+        x_vel = -ang_vel * radius * math.sin(ang_vel * used_time)
+        x_acc = -(ang_vel ** 2.0) * radius * math.cos(ang_vel * used_time)
 
-        y_pos = radius * math.cos(ang_vel * used_time)
-        y_vel = -ang_vel * radius * math.sin(ang_vel * used_time)
-        y_acc = -(ang_vel ** 2.0) * radius * math.cos(ang_vel * used_time)
+        y_pos = radius * math.sin(ang_vel * used_time)
+        y_vel = ang_vel * radius * math.cos(ang_vel * used_time)
+        y_acc = -(ang_vel ** 2.0) * radius * math.sin(ang_vel * used_time)
 
         
         
@@ -85,7 +85,7 @@ def talker(ang_vel = 1.0, radius = 0.1):
         br.sendTransform(t)
 
         rate.sleep()
-        print("looping...")
+        #print("looping...")
 
 if __name__ == '__main__':
     try:
