@@ -120,7 +120,8 @@ class Fit_Trial_Block(smach.State):
 
     def execute(self, userdata):
         # Load target data from csv file
-        data = np.loadtxt("targets.csv", delimiter=",")
+        csv_path = 'protocol_controller/include/targets.csv'
+        data = np.loadtxt(csv_path, delimiter=",")
 
         # Waypoints
         targetx_data = data[:, 0] * 0.01
