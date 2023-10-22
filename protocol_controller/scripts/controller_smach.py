@@ -8,7 +8,7 @@ from smach_ros import SimpleActionState
 from sensor_msgs.msg import JointState
 import time
 from std_srvs.srv import SetBool
-
+from std_msgs import Float64MultiArray
 
 # Define the individual states
 class Initial_State(smach.State):
@@ -89,7 +89,6 @@ class Init_Trial(smach.State):
         smach.State.__init__(self, outcomes=['initiated'])
 
     def execute(self, userdata):
-        # Define variables
         return 'initiated'
 
 
@@ -106,9 +105,78 @@ class Fit_Trial_Block(smach.State):
     def __init__(self, fitting_method):
         smach.State.__init__(self, outcomes=['fitted'])
         self.fitting_method = fitting_method
+        self.endEffector = np.array([[0.0], [0.0]])
+        self.sub = rospy.Subscriber('CurrentEndEffectorPose', Float64MultiArray, self.end_effector_callback)
+        self.target_pub = rospy.Publisher('CurrentTargets', Float64MultiArray, queue_size=10)
+
+    def end_effector_callback(self, msgs):
+        self.endEffector[0][0] = msg.data[0]
+        self.endEffector[1][0] = msg.data[1]
+
+    def close_enough(self, coord1, coord2):
+        radius_enough = 0.013
+        distance = np.linalg.norm(coord1 - coord2)
+        return distance <= radius_enough
 
     def execute(self, userdata):
-        # Conduct fitting based on self.fitting_method
+        # Load target data from csv file
+        data = np.loadtxt("targets.csv", delimiter=",")
+
+        # Waypoints
+        targetx_data = data[:, 0] * 0.01
+        targety_data = data[:, 1] * 0.01
+
+        pathmap = {}
+
+        for i in range(0, targetx_data.size, 6):
+            path_num = (i // 6) + 1
+            pathmap[path_num] = np.column_stack((targetx_data[i:i + 6], targety_data[i:i + 6]))
+
+        initial_path = 1
+        total_trials = 7
+        targetXY = np.array([[0], [0]])
+        targetXYold = np.array([[0], [0]])
+        temptarget = np.array([[0.1], [0]])
+        origin_target = np.array([[0.0], [0.0]])
+        sanity_target = np.array([[0.01], [0.0]])
+
+        for trial in range(total_trials):
+            # User centers the robot to origin
+            targetXY = origin_target
+
+            target_msg = Float64MultiArray()
+            target_msg.data = [targetXY[0][0], targetXY[1][0]]
+            self.target_pub.publish(target_msg)
+
+            while not is_close_enough(self.endEffector, targetXY):
+                time.sleep(0.5)
+
+            # Move to sanity check target
+            targetXY = sanity_target
+
+            target_msg = Float64MultiArray()
+            target_msg.data = [targetXY[0][0], targetXY[1][0]]
+            self.target_pub.publish(target_msg)
+
+            while not is_close_enough(self.endEffector, targetXY):
+                time.sleep(0.5)
+
+            # Start the trial
+            targets = pathmap[trial + 1]
+            for target in targets:
+                targetXY = target.reshape(2, 1)
+
+                target_msg = Float64MultiArray()
+                target_msg.data = [targetXY[0][0], targetXY[1][0]]
+                self.target_pub.publish(target_msg)
+
+                while not is_close_enough(self.endEffector, targetXY):
+                    time.sleep(0.5)
+
+            # Wait for 5 seconds before the next trial
+            targetXY = np.array([[0], [0]])
+            time.sleep(5)
+
         return 'fitted'
 
 
