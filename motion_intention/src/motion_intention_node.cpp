@@ -47,8 +47,8 @@ class MIntNodeWrapper{
 			ros::param::param<double>("/mint/allowable_time", allowable_time_tolerance, 0.0005);
 			ros::param::param<int>("/mint/inference_rate", inference_rate, 500);
 			ros::param::param<int>("/mint/pose_deque_min_size", pose_deque_min_size, 3);
-			ros::param::param<int>("/mint/sample_time", state_dim, 2);
-			ros::param::param<int>("/mint/sample_time", seq_length, 125);
+			ros::param::param<int>("/mint/state_dim", state_dim, 2);
+			ros::param::param<int>("/mint/seq_length", seq_length, 125);
 			ros::param::param<int>("/mint/mint_state_dim", mint_state_dim, 4);
 			input_deque_seq_length = mintnet.input_seq_length;
 			time_start = std::chrono::steady_clock::now();

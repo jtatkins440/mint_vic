@@ -7,6 +7,10 @@
 using json = nlohmann::json;
 using namespace torch::indexing;
 
+#include "circle.h"
+#include "circleutils.h"
+#include "circlefit.h"
+
 class MIntSpline{
 	public:
 	MIntSpline(){};
@@ -286,58 +290,53 @@ class LineFitWrapper{
 		output_chn_size = int(data_model["output_size"]);
 		input_seq_length = int(data_helper["input_sequence_length"]);
 		output_seq_length = int(data_model["M"]) * int(data_model["G"]);
-		eq_lead_time = (float) data_helper["lead_time"];
+		equilibrium_lead_time = (float) data_helper["lead_time"];
 		dt = (float) data_helper["dt"];
 
 		// generate observation 'X' array as a 125x2 array where column 0 is just 1's and column 1 is time corresponding to each input. Should be static.
-		Eigen::Matrix<float,  input_seq_length, 2> A;
+		//Eigen::MatrixXf A(input_seq_length, output_chn_size);
+		A = Eigen::MatrixXf::Zero(input_seq_length, output_chn_size);
 		for (int row = 0; row < input_seq_length; row++){
-			A[row, 0] = 1.0;
-			A[row, 1] = ((float)(input_seq_length - row - 1)) * dt;
+			A(row, 0) = 1.0;
+			A(row, 1) = ((float)(input_seq_length - row - 1)) * dt;
 		}
-		A_QR = A.fullPivHouseholderQR(); // QR decomp of A. to solve matrix eq, just do A_QR.solve(Y) where Y are the 'inputs' or the positions for each dimension.
+		//std::cout << "A.rows(): " << A.rows() << ", A.cols(): " << A.cols() << std::endl;
+		
+		//A_QR = A.fullPivHouseholderQR(); // QR decomp of A. to solve matrix eq, just do A_QR.solve(Y) where Y are the 'inputs' or the positions for each dimension.
 		
 		// 
 		model_order = 2; // hardcoding is bad! stop it.
-		Eigen::MatrixXXf b_coeffs(model_order, output_chn_size);
+		b_coeffs = Eigen::MatrixXf::Zero(model_order, output_chn_size);
 		b_coeffs << 0.0, 0.0, 
 					0.0, 0.0; // rows should be [b_0; b_1], cols should be dims [x, y];
 		
 		timer_start = std::chrono::steady_clock::now();
 	};
 
-	void fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input);
-	Eigen::ArrayXf getEquilibriumPoint();
-
-	private:
-	std::string param_path;
-	int input_chn_size;
-	int output_chn_size;
-	int input_seq_length;
-	int output_seq_length;
-	int model_order;
-	float eq_lead_time;
-	float dt;
-	std::chrono::time_point<std::chrono::steady_clock> timer_start;
-	Eigen::FullPivHouseholderQR:::FullPivHouseholderQR<Eigen::MatrixXXf> A_QR;
-	Eigen::MatrixXXf b_coeffs;
+	//void fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input);
+	//Eigen::ArrayXf getEquilibriumPoint();
 
 	void fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input){
 		// current state is ignored, only here because of compatibility with ROS wrapper
 		// input is assumed to be 2x125 of [p_x, p_y] values.
-		Eigen::MatrixXXf Y_full = input.matrix().transpose();
+		Eigen::MatrixXf Y_full = input.matrix().transpose();
 
 		// find b coeffs for each dim.
 		for (int dim = 0; dim < output_chn_size; dim++){
 			//Eigen::MatrixXXf b_col_temp = A_QR.solve(Y_full(all, dim));
-			b_coeffs(all, dim) = A_QR.solve(Y_full(all, dim));
+			//Eigen::MatrixXf Y = Y_full(Eigen::all, dim);
+			Eigen::VectorXf Y = Y_full(Eigen::all, dim);
+			std::cout << "Y.rows(): " << Y.rows() << ", Y.cols(): " << Y.cols() << std::endl;
+			std::cout << "A.rows(): " << A.rows() << ", A.cols(): " << A.cols() << std::endl;
+			std::cout << "vals are: " << A.fullPivHouseholderQr().solve(Y) << std::endl;
+			b_coeffs(Eigen::all, dim) = A.fullPivHouseholderQr().solve(Y);
 		}
 		timer_start = std::chrono::steady_clock::now();
-	}
+	};
 
 	Eigen::ArrayXf getEquilibriumPoint(){
 		auto end = std::chrono::steady_clock::now();
-		std::chrono::duration<double> diff = end - spline_timer_start;
+		std::chrono::duration<double> diff = end - timer_start;
 		double spline_eq_time = diff.count() + equilibrium_lead_time;
 
 		Eigen::ArrayXf eq_point(output_chn_size);
@@ -345,7 +344,23 @@ class LineFitWrapper{
 
 		return eq_point;
 	}; 
-}
+
+	private:
+	json params;
+	std::string param_path;
+	int input_chn_size;
+	int output_chn_size;
+	int input_seq_length;
+	int output_seq_length;
+	int model_order;
+	float equilibrium_lead_time;
+	float dt;
+	std::chrono::time_point<std::chrono::steady_clock> timer_start;
+	Eigen::MatrixXf A;
+	Eigen::MatrixXf b_coeffs;
+
+	
+};
 
 
 // CircleFitWrapper expects to be passed the current state as a [position; velocity] vector and the input as a 2x125 array of 
@@ -368,16 +383,52 @@ class CircleFitWrapper{
 		// generate observation 'X' array as a 125x2 array where column 0 is just 1's and column 1 is time corresponding to each input. Should be static.
 
 		// TODO: add circle stuff too
-		Eigen::MatrixXf x_eq(output_chn_size);
-		
+		//Eigen::MatrixXf x_eq(output_chn_size);
+		x_eq = Eigen::MatrixXf::Zero(output_chn_size, 1);
+		Circle circle;
+
 		timer_start = std::chrono::steady_clock::now();
 	};
 
-	void fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input);
-	Eigen::ArrayXf getEquilibriumPoint();
+	//void fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input);
+	//Eigen::ArrayXf getEquilibriumPoint();
+	Circle circle;
 
+	// UPDATE
+	void fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input){
+		// current state is ignored, only here because of compatibility with ROS wrapper
+		// input is assumed to be 2x125 of [p_x, p_y] values.
+
+		int size = input.cols();
+		double x_array[size];
+		double y_array[size];
+		for (int i = 0; i < size; i++){
+			x_array[i] = input(0, i); // x_pos
+			y_array[i] = input(1, i); // y_pos
+		}
+
+		CircleData Datafitcircle(size, x_array, y_array);
+		circle = CircleFitByPratt(Datafitcircle);
+
+
+		x_eq(0) = circle.a + circle.r*(current_state(0)-circle.a)/(sqrt(pow(current_state(0)-circle.a,2)+pow(current_state(1)-circle.b,2)));
+		x_eq(1) = circle.b + (x_eq(0)-circle.a)*(current_state(1)-circle.b)/(current_state(0)-circle.a);
+
+		//x_eq(0) = projected(0);
+		//x_eq(1) = projected(1);
+		//angleproj = atan2(projected(1)-xcurrent(1),projected(0)-xcurrent(0));
+
+		timer_start = std::chrono::steady_clock::now(); // timing not used in OG implimentation, just return same ol' point
+	}
+
+	// UPDATE
+	Eigen::ArrayXf getEquilibriumPoint(){
+		return x_eq;
+	}; 
+	
 	private:
 	std::string param_path;
+	json params;
 	int input_chn_size;
 	int output_chn_size;
 	int input_seq_length;
@@ -386,31 +437,11 @@ class CircleFitWrapper{
 	float eq_lead_time;
 	float dt;
 	std::chrono::time_point<std::chrono::steady_clock> timer_start;
-	Eigen::FullPivHouseholderQR:::FullPivHouseholderQR<Eigen::MatrixXXf> A_QR;
+	//Eigen::FullPivHouseholderQR:::FullPivHouseholderQR<Eigen::MatrixXf> A_QR;
+	Eigen::MatrixXf A;
 	Eigen::MatrixXf x_eq;
-
-	// UPDATE
-	void fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input){
-		// current state is ignored, only here because of compatibility with ROS wrapper
-		// input is assumed to be 2x125 of [p_x, p_y] values.
+	
 
 
-		CircleData Datafitcircle(ysize,x_reserved_array, y_reserved_array);
-		circle = CircleFitByPratt(Datafitcircle);
-
-
-		projected(0) = circle_a + circle_r*(x_new(0)-circle_a)/(sqrt(pow(x_new(0)-circle_a,2)+pow(x_new(2)-circle_b,2)));
-		projected(1) = circle_b + (projected(0)-circle_a)*(x_new(2)-circle_b)/(x_new(0)-circle_a);
-
-		x_eq(0) = projected(0);
-		x_eq(1) = projected(1);
-		angleproj = atan2(projected(1)-xcurrent(1),projected(0)-xcurrent(0));
-
-		timer_start = std::chrono::steady_clock::now(); // timing not used in OG implimentation, just return same ol' point
-	}
-
-	// UPDATE
-	Eigen::ArrayXf getEquilibriumPoint(){
-		return x_e;
-	}; 
-}
+	
+};
