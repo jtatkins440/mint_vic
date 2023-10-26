@@ -1,0 +1,8 @@
+<launch>
+    <group ns="mint">
+    	<rosparam file="$(find motion_intention)/config/mint_config.yaml" />
+    	<param name="hparam_json_path" type="string" value="$(find motion_intention)/config/hyper_params.json" />
+    	<param name="model_weights_path" type="string" value="$(find motion_intention)/config/traced_mintnet_epochs_10.pt" />
+    	<node name="mint_pub" pkg="motion_intention" type="motion_intention_node" />
+    </group>
+</launch>
