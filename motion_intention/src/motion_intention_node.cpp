@@ -42,6 +42,8 @@ class MIntNodeWrapper{
 			};
 
 			mintnet = MIntWrapper(model_weights_path, hyperparam_weights_path);
+			LineFitWrapper mint_line = LineFitWrapper(hyperparam_weights_path);
+    		CircleFitWrapper mint_circ = CircleFitWrapper(hyperparam_weights_path);
 
 			ros::param::param<double>("/mint/sample_time", sample_time, 0.005);
 			ros::param::param<double>("/mint/allowable_time", allowable_time_tolerance, 0.0005);
@@ -50,9 +52,11 @@ class MIntNodeWrapper{
 			ros::param::param<int>("/mint/state_dim", state_dim, 2);
 			ros::param::param<int>("/mint/seq_length", seq_length, 125);
 			ros::param::param<int>("/mint/mint_state_dim", mint_state_dim, 4);
+			ros::param::param<int>("/mint/cfit_state_dim", cfit_state_dim, 2);
 			input_deque_seq_length = mintnet.input_seq_length;
 			time_start = std::chrono::steady_clock::now();
 
+			fit_type = 0; // use mintnet by default, update it via service.
 			//Eigen::Array<float, 2 * state_dim, seq_length> input_array;
 			//mint_state_dim = 4;
 		};
@@ -66,6 +70,9 @@ class MIntNodeWrapper{
 		ros::Subscriber sub_hist;
 		ros::Publisher pub;
 		MIntWrapper mintnet;
+		LineFitWrapper mint_line;
+		CircleFitWrapper mint_circ;
+		int fit_type; // 0 for mintnet, 1 for line, 2 for circle.
 
 		ros::NodeHandle nh;
 		std::deque<Eigen::ArrayXf> input_deque; // deque of inputs (vel and acc) to the MIntNet
@@ -83,6 +90,7 @@ class MIntNodeWrapper{
 		int state_dim;
 		int seq_length;
 		int mint_state_dim;
+		int cfit_state_dim;
 
 		bool b_deque_ready = false; // flag for toggling if deque is full or not
 		bool b_mint_ready = false; // flag for toggling if mint method is fitted and ready to give predictions
@@ -120,7 +128,7 @@ void MIntNodeWrapper::subscriberHistoryCallback(const motion_intention::HistoryS
   	Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> hist_matrix(data.data(), rows, cols);
 
 	Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> full_hist_matrix = (hist_matrix.cast <float> ());
-	cfit_input_array = full_hist_matrix;
+	cfit_input_array = full_hist_matrix.block(0,0,cfit_state_dim,cols).eval();
 	mint_input_array = full_hist_matrix.block(2,0,mint_state_dim,cols).eval();
 	//std::cout << "input_array = " << std::endl << input_array << std::endl;
 
@@ -146,7 +154,8 @@ void MIntNodeWrapper::fitHandler(){
 			//std::cout << "dequeHandler, current_state: " << current_state << std::endl;
 
 			mintnet.fit(current_state, mint_input_array); // expects [current_position; current_velocity] for first argument!
-
+			mint_line.fit(current_state, cfit_input_array); 
+			mint_circ.fit(current_state, cfit_input_array); 
 			b_mint_ready = true;
 		}
 		time_start = std::chrono::steady_clock::now();
@@ -248,7 +257,19 @@ void MIntNodeWrapper::mainLoop() {
 		fitHandler();
 		if (b_mint_ready){
 			// update empty message with fitted value
-			Eigen::ArrayXf eq_pose = mintnet.getEquilibriumPoint();
+			if (fit_type == 0){
+				Eigen::ArrayXf eq_pose = mintnet.getEquilibriumPoint();
+			}
+			else if (fit_type == 1){
+				Eigen::ArrayXf eq_pose = mint_line.getEquilibriumPoint();
+			}
+			else if (fit_type == 2){
+				Eigen::ArrayXf eq_pose = mint_circ.getEquilibriumPoint();
+			}
+			else {
+				Eigen::ArrayXf eq_pose = Eigen::ArrayXf::Zero(2,1);
+			}
+			
 			pose_s.pose.position.x = eq_pose(0);
 			pose_s.pose.position.y = eq_pose(1);
 			pose_s.pose.orientation.w = 1.0;
