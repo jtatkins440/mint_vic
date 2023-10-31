@@ -12,12 +12,14 @@ from std_msgs import Float64MultiArray
 from enum import Enum
 # Placeholder for fitting method service
 from your_package_name.srv import SetFittingMethod
+# Placeholder for logging services
+from your_package_name.srv import StartLogging, InitLogger, StopLogging
 
 
 class FittingMethod(Enum):
-    MINTNET = 0
-    CIRCLE_FITTING = 1
-    LINEAR_FITTING = 2
+    MINTNET = 1
+    CIRCLE_FITTING = 2
+    LINEAR_FITTING = 3
 
 
 # Define the individual states
@@ -97,11 +99,13 @@ class Origin_Holding(smach.State):
 
 class Init_Trial(smach.State):
     def __init__(self):
-        smach.State.__init__(self, outcomes=['initiated'])
+        smach.State.__init__(self, outcomes=['initiated'], output_keys=['subject_num', 'fitting_method'])
         # Replace placeholder service type
         self.fitting_service = rospy.ServiceProxy('fitting_method_service', SetFittingMethod)
+        self.init_logger_service = rospy.ServiceProxy('init_logger', InitLogger)
 
     def execute(self, userdata):
+        subject_num = input("Enter the Subject's Number: ")
         print("Choose a fitting method:")
         print("1. MIntNet")
         print("2. Circle Fitting")
@@ -126,32 +130,154 @@ class Init_Trial(smach.State):
         except rospy.ServiceException as e:
             rospy.logerr("Service call failed: %s", e)
 
+        # Communicate with the TrialDataLogger node to initialize with the subject number
+        try:
+            resp = self.init_logger_service(subject_num)
+            if not resp.success:
+                rospy.logerr("Failed to initialize TrialDataLogger with subject number.")
+        except rospy.ServiceException as e:
+            rospy.logerr("Service Call Failed: %s", e)
+
         return 'initiated'
 
 
-class Calibration(smach.State):
+class BaseTrialState(smach.State):
     def __init__(self):
-        smach.State.__init__(self, outcomes=['calibrated', 'recalibrate'])
-
-        self.fitting_method = fitting_method
+        smach.State.__init__(self, outcomes=['fitted'], input_keys=['subject_num', 'fitting_method'],
+                             output_keys=['trial_type'])
         self.endEffector = np.array([[0.0], [0.0]])
         # Post stamped msg:- header, pose
         self.sub = rospy.Subscriber('CurrentEndEffectorPose', Float64MultiArray, self.end_effector_callback)
         self.target_pub = rospy.Publisher('CurrentTargets', Float64MultiArray, queue_size=10)
         self.prev_target_pub = rospy.Publisher('PreviousTargets', Float64MultiArray, queue_size=10)
         self.trial_targets_pub = rospy.Publisher('TrialTargets', Float64MultiArray, queue_size=10)
-
-        # Service to toggle MIntNet Node
-        self.mintnet_toggle_srv = rospy.ServiceProxy('toggle_mintnet', SetBool)
+        self.start_logger_service = rospy.ServiceProxy('start_logging', StartLogging)
+        self.stop_logger_service = rospy.ServiceProxy('stop_logging', Trigger)
 
     def end_effector_callback(self, msgs):
         self.endEffector[0][0] = msg.data[0]
         self.endEffector[1][0] = msg.data[1]
 
-    def close_enough(self, coord1, coord2):
+    def is_close_enough(self, coord1, coord2):
         radius_enough = 0.013
         distance = np.linalg.norm(coord1 - coord2)
         return distance <= radius_enough
+
+    def start_logging(self, subject_num, trial, method=None, trial_type=None):
+        try:
+            resp = self.start_logger_service(subject_num, trial, method, trial_type)
+            if not resp.success:
+                rospy.logerr("Failed to start logging.")
+        except rospy.ServiceException as e:
+            rospy.logerr("Service call failed: %s", e)
+
+    def stop_logging(self):
+        try:
+            resp = self.stop_logger_service()
+            if not resp.success:
+                rospy.logerr("Failed to stop logging.")
+        except rospy.ServiceException as e:
+            rospy.logerr("Service call failed: %s", e)
+
+    def execute(self, userdata):
+        # Load target data from csv file
+        trial_type = userdata.trial_type
+        current_directory = os.path.dirname(os.path.realpath(__file__))
+        csv_path = os.path.join(current_directory, '..', 'include', 'targets.csv')
+        data = np.loadtxt(csv_path, delimiter=",")
+
+        # Waypoints
+        targetx_data = data[:, 0] * 0.01
+        targety_data = data[:, 1] * 0.01
+
+        pathmap = {}
+
+        for i in range(0, targetx_data.size, 6):
+            path_num = (i // 6) + 1
+            pathmap[path_num] = np.column_stack((targetx_data[i:i + 6], targety_data[i:i + 6]))
+
+        total_trials = 7
+        targetXY = np.array([[0], [0]])
+        targetXYold = np.array([[0], [0]])
+        origin_target = np.array([[0.0], [0.0]])
+        sanity_target = np.array([[0.1], [0.0]])
+
+        for trial in range(total_trials):
+            # User centers the robot to origin
+            targetXY = origin_target
+
+            # Publishing current targets
+            target_msg = Float64MultiArray()
+            target_msg.data = [targetXY[0][0], targetXY[1][0]]
+            self.target_pub.publish(target_msg)
+
+            while not self.is_close_enough(self.endEffector, targetXY):
+                time.sleep(0.01)
+
+            # Publishing previous targets
+            prev_target_msg = Float64MultiArray()  # New message for targetXYold
+            prev_target_msg.data = [targetXYold[0][0], targetXYold[1][0]]
+            self.prev_target_pub.publish(prev_target_msg)
+
+            # Move to sanity check target
+            targetXY = sanity_target
+            targetXYold = origin_target
+
+            target_msg = Float64MultiArray()
+            target_msg.data = [targetXY[0][0], targetXY[1][0]]
+            self.target_pub.publish(target_msg)
+
+            # Publishing previous targets
+            prev_target_msg = Float64MultiArray()  # New message for targetXYold
+            prev_target_msg.data = [targetXYold[0][0], targetXYold[1][0]]
+            self.prev_target_pub.publish(prev_target_msg)
+
+            while not self.is_close_enough(self.endEffector, targetXY):
+                time.sleep(0.01)
+
+            targetXYold = sanity_target
+            # Start the trial
+            targets = pathmap[trial + 1]
+
+            # Publish targets for GUI
+            trial_targets_msg = Float64MultiArray()
+            for target in targets:
+                trial_targets_msg.data.extend(target)
+            self.trial_targets_pub.publish(trial_targets_msg)
+
+            # Trigger Trial Data Logger
+            self.start_logging(userdata.subject_num, trial, userdata.fitting_method, trial_type)
+
+            for target_count, target in enumerate(targets):
+                targetXYold = targetXY
+                targetXY = target.reshape(2, 1)
+
+                target_msg = Float64MultiArray()
+                target_msg.data = [targetXY[0][0], targetXY[1][0]]
+                self.target_pub.publish(target_msg)
+
+                # Publishing previous targets
+                prev_target_msg = Float64MultiArray()  # New message for targetXYold
+                prev_target_msg.data = [targetXYold[0][0], targetXYold[1][0]]
+                self.prev_target_pub.publish(prev_target_msg)
+
+                while not self.is_close_enough(self.endEffector, targetXY):
+                    time.sleep(0.01)
+
+            # Wait for 5 seconds before the next trial
+            targetXY = np.array([[0], [0]])
+            # Trigger Trial Data Logger to close and save the file
+            self.stop_logging()
+            time.sleep(5)
+
+        return 'fitted'
+
+
+class Calibration(BaseTrialState):
+    def __init__(self):
+        super().__init__()
+        # Service to toggle MIntNet Node
+        self.mintnet_toggle_srv = rospy.ServiceProxy('toggle_mintnet', SetBool)
 
     def toggle_mintnet(self, enable):
         try:
@@ -166,89 +292,8 @@ class Calibration(smach.State):
     def execute(self, userdata):
         # Toggle MIntNet Node off
         self.toggle_mintnet(False)
-
-        current_directory = os.path.dirname(os.path.realpath(__file__))
-        csv_path = os.path.join(current_directory, '..', 'include', 'targets.csv')
-        data = np.loadtxt(csv_path, delimiter=",")
-
-        # Waypoints
-        targetx_data = data[:, 0] * 0.01
-        targety_data = data[:, 1] * 0.01
-
-        pathmap = {}
-
-        for i in range(0, targetx_data.size, 6):
-            path_num = (i // 6) + 1
-            pathmap[path_num] = np.column_stack((targetx_data[i:i + 6], targety_data[i:i + 6]))
-
-        total_trials = 7
-        targetXY = np.array([[0], [0]])
-        targetXYold = np.array([[0], [0]])
-        origin_target = np.array([[0.0], [0.0]])
-        sanity_target = np.array([[0.1], [0.0]])
-
-        for trial in range(total_trials):
-            # User centers the robot to origin
-            targetXY = origin_target
-
-            # Publishing current targets
-            target_msg = Float64MultiArray()
-            target_msg.data = [targetXY[0][0], targetXY[1][0]]
-            self.target_pub.publish(target_msg)
-
-            while not is_close_enough(self.endEffector, targetXY):
-                time.sleep(0.01)
-
-            # Publishing previous targets
-            prev_target_msg = Float64MultiArray()  # New message for targetXYold
-            prev_target_msg.data = [targetXYold[0][0], targetXYold[1][0]]
-            self.prev_target_pub.publish(prev_target_msg)
-
-            # Move to sanity check target
-            targetXY = sanity_target
-            targetXYold = origin_target
-
-            target_msg = Float64MultiArray()
-            target_msg.data = [targetXY[0][0], targetXY[1][0]]
-            self.target_pub.publish(target_msg)
-
-            # Publishing previous targets
-            prev_target_msg = Float64MultiArray()  # New message for targetXYold
-            prev_target_msg.data = [targetXYold[0][0], targetXYold[1][0]]
-            self.prev_target_pub.publish(prev_target_msg)
-
-            while not is_close_enough(self.endEffector, targetXY):
-                time.sleep(0.01)
-
-            targetXYold = sanity_target
-            # Start the trial
-            targets = pathmap[trial + 1]
-
-            # Publish targets for GUI
-            trial_targets_msg = Float64MultiArray()
-            for target in targets:
-                trial_targets_msg.data.extend(target)
-            self.trial_targets_pub.publish(trial_targets_msg)
-
-            for target_count, target in enumerate(targets):
-                targetXYold = targetXY
-                targetXY = target.reshape(2, 1)
-
-                target_msg = Float64MultiArray()
-                target_msg.data = [targetXY[0][0], targetXY[1][0]]
-                self.target_pub.publish(target_msg)
-
-                # Publishing previous targets
-                prev_target_msg = Float64MultiArray()  # New message for targetXYold
-                prev_target_msg.data = [targetXYold[0][0], targetXYold[1][0]]
-                self.prev_target_pub.publish(prev_target_msg)
-
-                while not is_close_enough(self.endEffector, targetXY):
-                    time.sleep(0.01)
-
-            # Wait for 5 seconds before the next trial
-            targetXY = np.array([[0], [0]])
-            time.sleep(5)
+        userdata.trial_type = 'Calibration'
+        super().execute(userdata)
 
         # Once trials are completed, toggle MIntNet Node back on
         self.toggle_mintnet(True)
@@ -256,112 +301,13 @@ class Calibration(smach.State):
         return 'calibrated'  # or 'recalibrate'
 
 
-
-class Fit_Trial_Block(smach.State):
-    def __init__(self, fitting_method):
-        smach.State.__init__(self, outcomes=['fitted'])
-
-        self.fitting_method = fitting_method
-        self.endEffector = np.array([[0.0], [0.0]])
-        # Post stamped msg:- header, pose
-        self.sub = rospy.Subscriber('CurrentEndEffectorPose', Float64MultiArray, self.end_effector_callback)
-        self.target_pub = rospy.Publisher('CurrentTargets', Float64MultiArray, queue_size=10)
-        self.prev_target_pub = rospy.Publisher('PreviousTargets', Float64MultiArray, queue_size=10)
-        self.trial_targets_pub = rospy.Publisher('TrialTargets', Float64MultiArray, queue_size=10)
-
-    def end_effector_callback(self, msgs):
-        self.endEffector[0][0] = msg.data[0]
-        self.endEffector[1][0] = msg.data[1]
-
-    def close_enough(self, coord1, coord2):
-        radius_enough = 0.013
-        distance = np.linalg.norm(coord1 - coord2)
-        return distance <= radius_enough
+class Fit_Trial_Block(BaseTrialState):
+    def __init__(self):
+        super().__init__()
 
     def execute(self, userdata):
-        # Load target data from csv file
-        current_directory = os.path.dirname(os.path.realpath(__file__))
-        csv_path = os.path.join(current_directory, '..', 'include', 'targets.csv')
-        data = np.loadtxt(csv_path, delimiter=",")
-
-        # Waypoints
-        targetx_data = data[:, 0] * 0.01
-        targety_data = data[:, 1] * 0.01
-
-        pathmap = {}
-
-        for i in range(0, targetx_data.size, 6):
-            path_num = (i // 6) + 1
-            pathmap[path_num] = np.column_stack((targetx_data[i:i + 6], targety_data[i:i + 6]))
-
-        total_trials = 7
-        targetXY = np.array([[0], [0]])
-        targetXYold = np.array([[0], [0]])
-        origin_target = np.array([[0.0], [0.0]])
-        sanity_target = np.array([[0.1], [0.0]])
-
-        for trial in range(total_trials):
-            # User centers the robot to origin
-            targetXY = origin_target
-
-            # Publishing current targets
-            target_msg = Float64MultiArray()
-            target_msg.data = [targetXY[0][0], targetXY[1][0]]
-            self.target_pub.publish(target_msg)
-
-            while not is_close_enough(self.endEffector, targetXY):
-                time.sleep(0.01)
-
-            # Publishing previous targets
-            prev_target_msg = Float64MultiArray()  # New message for targetXYold
-            prev_target_msg.data = [targetXYold[0][0], targetXYold[1][0]]
-            self.prev_target_pub.publish(prev_target_msg)
-
-            # Move to sanity check target
-            targetXY = sanity_target
-            targetXYold = origin_target
-
-            target_msg = Float64MultiArray()
-            target_msg.data = [targetXY[0][0], targetXY[1][0]]
-            self.target_pub.publish(target_msg)
-
-            # Publishing previous targets
-            prev_target_msg = Float64MultiArray()  # New message for targetXYold
-            prev_target_msg.data = [targetXYold[0][0], targetXYold[1][0]]
-            self.prev_target_pub.publish(prev_target_msg)
-
-            while not is_close_enough(self.endEffector, targetXY):
-                time.sleep(0.01)
-
-            targetXYold = sanity_target
-            # Start the trial
-            targets = pathmap[trial + 1]
-
-            # Publish targets for GUI
-            trial_targets_msg = Float64MultiArray()
-            for target in targets:
-                trial_targets_msg.data.extend(target)
-            self.trial_targets_pub.publish(trial_targets_msg)
-
-            for target_count, target in enumerate(targets):
-                targetXYold = targetXY
-                targetXY = target.reshape(2, 1)
-
-                target_msg = Float64MultiArray()
-                target_msg.data = [targetXY[0][0], targetXY[1][0]]
-                self.target_pub.publish(target_msg)
-
-                # Publishing previous targets
-                prev_target_msg = Float64MultiArray()  # New message for targetXYold
-                prev_target_msg.data = [targetXYold[0][0], targetXYold[1][0]]
-                self.prev_target_pub.publish(prev_target_msg)
-
-                while not is_close_enough(self.endEffector, targetXY):
-                    time.sleep(0.01)
-
-            # Wait for 5 seconds before the next trial
-            targetXY = np.array([[0], [0]])
-            time.sleep(5)
+        userdata.trial_type = 'Calibration'
+        super().execute(userdata)
 
         return 'fitted'
 
@@ -370,22 +316,25 @@ def main():
     rospy.init_node('protocol_controller')
 
     # Create a top-level state machine
-    sm_top = smach.StateMachine(outcomes=['success', 'failure'])
+    sm_top = smach.StateMachine(outcomes=['success', 'failure'], input_keys=[], output_keys=[])
 
     with sm_top:
-        smach.StateMachine.add('INITIAL_STATE', Initial_State(), transitions={'initialized': 'ORIGIN_HOLDING'})
+        smach.StateMachine.add('INITIAL_STATE', Initial_State(),
+                               transitions={'initialized': 'ORIGIN_HOLDING', 'failed': 'failure'})
 
-        smach.StateMachine.add('ORIGIN_HOLDING', Origin_Holding(), transitions={'centered': 'TRIAL_SET'})
+        smach.StateMachine.add('ORIGIN_HOLDING', Origin_Holding(),
+                               transitions={'centered': 'TRIAL_SET', 'failed': 'failure'})
 
         # Trial Set State Machine (Hierarchical)
-        sm_trial_set = smach.StateMachine(outcomes=['trial_complete', 'trial_failed'])
+        sm_trial_set = smach.StateMachine(outcomes=['trial_complete', 'trial_failed'],
+                                          input_keys=['subject_num', 'fitting_method'], output_keys=['trial_type'])
         with sm_trial_set:
             smach.StateMachine.add('INIT_TRIAL', Init_Trial(), transitions={'initiated': 'CALIBRATION'})
             smach.StateMachine.add('CALIBRATION', Calibration(),
                                    transitions={'calibrated': 'FIT_TRIAL_BLOCK', 'recalibrate': 'INIT_TRIAL'})
 
             # Fit trial block can be chosen based on the method: 'circle_fitting', 'linear_fitting', 'neural_network'
-            smach.StateMachine.add('FIT_TRIAL_BLOCK', Fit_Trial_Block('circle_fitting'),
+            smach.StateMachine.add('FIT_TRIAL_BLOCK', Fit_Trial_Block(),
                                    transitions={'fitted': 'trial_complete'})
 
         smach.StateMachine.add('TRIAL_SET', sm_trial_set,
