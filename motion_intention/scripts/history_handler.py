@@ -38,9 +38,9 @@ class HistoryHandler:
         self.acceleration_updated = False
 
         self.pub = rospy.Publisher("/ee_history", HistoryStamped, queue_size=1)
-        self.sub_pose = rospy.Subscriber("/ee_pose", PoseStamped, self.callbackPose)
-        self.sub_twist = rospy.Subscriber("/ee_vel", TwistStamped, self.callbackTwist)
-        self.sub_acc = rospy.Subscriber("/ee_acc", TwistStamped, self.callbackAcc)
+        self.sub_pose = rospy.Subscriber("/iiwa/ee_pose", PoseStamped, self.callbackPose)
+        self.sub_twist = rospy.Subscriber("/iiwa/ee_vel", TwistStamped, self.callbackTwist)
+        self.sub_acc = rospy.Subscriber("/iiwa/ee_acc", TwistStamped, self.callbackAcc)
 
         self.time_start = time.time()
 

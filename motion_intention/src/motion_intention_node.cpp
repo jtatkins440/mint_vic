@@ -255,6 +255,7 @@ void MIntNodeWrapper::mainLoop() {
 
 		//dequeHandler();
 		fitHandler();
+		Eigen::ArrayXf eq_pose = Eigen::ArrayXf::Zero(2,1);
 		if (b_mint_ready){
 			// update empty message with fitted value
 			if (fit_type == 0){
@@ -266,19 +267,17 @@ void MIntNodeWrapper::mainLoop() {
 			else if (fit_type == 2){
 				Eigen::ArrayXf eq_pose = mint_circ.getEquilibriumPoint();
 			}
-			else {
-				Eigen::ArrayXf eq_pose = Eigen::ArrayXf::Zero(2,1);
-			}
 			
 			pose_s.pose.position.x = eq_pose(0);
-			pose_s.pose.position.y = eq_pose(1);
+			pose_s.pose.position.z = eq_pose(1);
 			pose_s.pose.orientation.w = 1.0;
 			pose_s.header.frame_id = "ee_eq";
-			std::cout << "Got new eq_pose! It's: "<< eq_pose << std::endl;
+			pose_s.header.stamp = ros::Time::now();;
+			//std::cout << "Got new eq_pose! It's: "<< eq_pose << std::endl;
 
 			transformStamped.header.stamp = ros::Time::now();
 			transformStamped.transform.translation.x = eq_pose(0);
-			transformStamped.transform.translation.x = eq_pose(1);
+			transformStamped.transform.translation.z = eq_pose(1);
 		}
 
 		pub.publish(pose_s);
