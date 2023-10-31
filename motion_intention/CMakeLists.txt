@@ -15,6 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   tf
   tf2
+  message_generation
 )
 
 ## System dependencies are found with CMake's conventions
@@ -52,11 +53,11 @@ find_package(Torch REQUIRED)
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
-# add_message_files(
-#   FILES
-#   Message1.msg
+ add_message_files(
+   FILES
+   HistoryStamped.msg
 #   Message2.msg
-# )
+ )
 
 ## Generate services in the 'srv' folder
 # add_service_files(
@@ -73,10 +74,10 @@ find_package(Torch REQUIRED)
 # )
 
 ## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   std_msgs
-# )
+generate_messages(
+   DEPENDENCIES
+   std_msgs
+ )
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -111,7 +112,7 @@ catkin_package(
   INCLUDE_DIRS include
   LIBRARIES motion_intention
   CATKIN_DEPENDS roscpp rospy std_msgs tf2_ros
-  DEPENDS system_lib
+  DEPENDS system_lib message_runtime
 )
 
 ###########
@@ -139,6 +140,7 @@ include_directories(
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 add_executable(${PROJECT_NAME}_node src/motion_intention_node.cpp)
+add_executable(mintwrapper_test src/mintwrapper_test.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -151,7 +153,11 @@ add_executable(${PROJECT_NAME}_node src/motion_intention_node.cpp)
 # add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
- target_link_libraries(${PROJECT_NAME}_node
+target_link_libraries(${PROJECT_NAME}_node
+   ${catkin_LIBRARIES}
+   ${TORCH_LIBRARIES})
+   
+target_link_libraries(mintwrapper_test
    ${catkin_LIBRARIES}
    ${TORCH_LIBRARIES})
 
@@ -166,6 +172,7 @@ add_executable(${PROJECT_NAME}_node src/motion_intention_node.cpp)
 ## in contrast to setup.py, you can choose the destination
 catkin_install_python(PROGRAMS
    scripts/test_pub.py
+   scripts/history_handler.py
    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
  )
 

@@ -1,0 +1,4 @@
+<launch>
+    <node name="pose_pub" pkg="motion_intention" type="test_pub.py" />
+    <node name="hist_hand" pkg="motion_intention" type="history_handler.py" />
+</launch>
