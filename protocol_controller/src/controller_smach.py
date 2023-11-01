@@ -8,12 +8,12 @@ from smach_ros import SimpleActionState
 from sensor_msgs.msg import JointState
 import time
 from std_srvs.srv import SetBool
-from std_msgs import Float64MultiArray
+from std_msgs.msg import Float64MultiArray
 from enum import Enum
 # Placeholder for fitting method service
 from your_package_name.srv import SetFittingMethod
 # Placeholder for logging services
-from your_package_name.srv import StartLogging, InitLogger, StopLogging
+from trial_data_logger.srv import StartLogging, InitLogger, StopLogging
 
 
 class FittingMethod(Enum):
