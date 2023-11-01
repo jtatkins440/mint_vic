@@ -5,12 +5,13 @@ import smach
 import smach_ros
 import numpy as np
 from smach_ros import SimpleActionState
+# Have assumed that current and desired JS topics have JointState msg type - change as required
 from sensor_msgs.msg import JointState
 import time
-from std_srvs.srv import SetBool
+from std_srvs.srv import SetBool, Trigger
 from std_msgs.msg import Float64MultiArray
 from enum import Enum
-# Placeholder for fitting method service
+# Placeholder for fitting method service - change package name and service as required
 from your_package_name.srv import SetFittingMethod
 # Placeholder for logging services
 from trial_data_logger.srv import StartLogging, InitLogger, StopLogging
@@ -36,10 +37,13 @@ class Origin_Holding(smach.State):
     def __init__(self):
         smach.State.__init__(self, outcomes=['centered', 'failed'])
         self.origin_joint_angles = [-1.5708, 1.5708, 0, 1.5708, 0, -1.5708, -0.958709]
+        # Placeholder - would need alteration
         self.desired_joint_pub = rospy.Publisher('DesiredJointSpace', JointState, queue_size=1)
         # Initialize the subscriber for CurrentJointSpace
         self.current_joint_angles = []
+        # Placeholder - would need alteration
         rospy.Subscriber('CurrentJointSpace', JointState, self.current_joint_callback)
+        # Topic name is a placeholder
         self.controller_toggle_srv = rospy.ServiceProxy('toggle_admittance_controller', SetBool)
         self.ik_toggle_srv = rospy.ServiceProxy('toggle_ik', SetBool)
 
@@ -74,6 +78,7 @@ class Origin_Holding(smach.State):
 
         rospy.loginfo("Robot Centered")
 
+    # Validate if this implementation would work
     def toggle_controller_ik(self, enable):
         try:
             resp_controller = self.controller_toggle_srv(enable)
@@ -147,12 +152,14 @@ class BaseTrialState(smach.State):
                              output_keys=['trial_type'])
         self.endEffector = np.array([[0.0], [0.0]])
         # Post stamped msg:- header, pose
+        # Following sub/pub declaration need alteration
         self.sub = rospy.Subscriber('CurrentEndEffectorPose', Float64MultiArray, self.end_effector_callback)
         self.target_pub = rospy.Publisher('CurrentTargets', Float64MultiArray, queue_size=10)
         self.prev_target_pub = rospy.Publisher('PreviousTargets', Float64MultiArray, queue_size=10)
         self.trial_targets_pub = rospy.Publisher('TrialTargets', Float64MultiArray, queue_size=10)
         self.start_logger_service = rospy.ServiceProxy('start_logging', StartLogging)
-        self.stop_logger_service = rospy.ServiceProxy('stop_logging', Trigger)
+        # StopLogging is a custom srv, and we can use a standard Trigger instead for this
+        self.stop_logger_service = rospy.ServiceProxy('stop_logging', StopLogging)
 
     def end_effector_callback(self, msgs):
         self.endEffector[0][0] = msg.data[0]
@@ -277,6 +284,7 @@ class Calibration(BaseTrialState):
     def __init__(self):
         super().__init__()
         # Service to toggle MIntNet Node
+        # Placeholder, will need to change
         self.mintnet_toggle_srv = rospy.ServiceProxy('toggle_mintnet', SetBool)
 
     def toggle_mintnet(self, enable):
