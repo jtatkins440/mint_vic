@@ -1,0 +1,7 @@
+int32 subject_num
+int32 trial_num
+int32 method
+string trial_type
+---
+bool success
+string message
