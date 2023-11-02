@@ -2,6 +2,7 @@
 #include "std_msgs/String.h"
 #include "geometry_msgs/PoseStamped.h"
 #include "motion_intention/HistoryStamped.h"
+#include "motion_intention/SetInt.h"
 #include <sstream>
 #include "mintwrapper.h"
 #include <iostream>
@@ -57,6 +58,8 @@ class MIntNodeWrapper{
 			time_start = std::chrono::steady_clock::now();
 
 			fit_type = 0; // use mintnet by default, update it via service.
+			srv_set_mint_type = nh.advertiseService("/mint/set_motion_intention_type", &MIntNodeWrapper::setMotionIntentType, this);
+
 			//Eigen::Array<float, 2 * state_dim, seq_length> input_array;
 			//mint_state_dim = 4;
 		};
@@ -97,16 +100,47 @@ class MIntNodeWrapper{
 
 
 		std::string model_weights_path, hyperparam_weights_path;
+		ros::ServiceServer srv_set_mint_type;
+		
 
 		void subscriberCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
 		void subscriberHistoryCallback(const motion_intention::HistoryStamped::ConstPtr& msg);
 		void updateDeque(Eigen::ArrayXf new_pose, float dt);
+		bool setMotionIntentType(motion_intention::SetInt::Request &req, motion_intention::SetInt::Response &res);
 
 	private:
 		std::chrono::steady_clock::time_point time_start;
 };
 
+bool MIntNodeWrapper::setMotionIntentType(motion_intention::SetInt::Request &req, motion_intention::SetInt::Response &res){
+	
+    
+    std::string out_string;
+	std::string type_name;
+	if (req.data == 0){
+		type_name = "MIntNet";
+	}
+	else if (req.data == 1){
+		type_name = "Line";
+	}
+	else if (req.data == 2){
+		type_name = "Circle";
+	}
+	else{
+		type_name = "Invalid";
+		res.success = false;
+		out_string = "!!!Invalid type!!! Expected 0 : MIntent, 1 : Line, or 2 : Circle";
+		res.message = out_string;
+		return res.success; // gets out of 
+	}
 
+	
+	res.success = true;
+	fit_type = req.data;
+    out_string = "motion_intention class fitting type set to " + type_name + "!!!";
+    res.message = out_string;
+    return res.success;
+};
 
 void MIntNodeWrapper::subscriberCallback(const geometry_msgs::PoseStamped::ConstPtr& msg){
 	geometry_msgs::Point position_new;
@@ -274,6 +308,15 @@ void MIntNodeWrapper::mainLoop() {
 			pose_s.header.frame_id = "ee_eq";
 			pose_s.header.stamp = ros::Time::now();;
 			//std::cout << "Got new eq_pose! It's: "<< eq_pose << std::endl;
+
+			geometry_msgs::TransformStamped transformStamped;
+			transformStamped.header.frame_id = "world";
+			transformStamped.child_frame_id = "ee_eq";
+			transformStamped.header.stamp = ros::Time::now();
+			transformStamped.transform.rotation.x = 0.0;
+			transformStamped.transform.rotation.y = 0.0;
+			transformStamped.transform.rotation.z = 0.0;
+			transformStamped.transform.rotation.w = 1.0;
 
 			transformStamped.header.stamp = ros::Time::now();
 			transformStamped.transform.translation.x = eq_pose(0);
