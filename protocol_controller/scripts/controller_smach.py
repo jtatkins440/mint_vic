@@ -7,13 +7,11 @@ import numpy as np
 from smach_ros import SimpleActionState
 from sensor_msgs.msg import JointState
 import time
-from std_srvs.srv import SetBool
+from std_srvs.srv import SetBool, Trigger
 from std_msgs.msg import Float64MultiArray
 from enum import Enum
-# Placeholder for fitting method service
-from your_package_name.srv import SetFittingMethod
-# Placeholder for logging services
-from trial_data_logger.srv import StartLogging, InitLogger, StopLogging
+from motion_intention.srv import SetInt
+from trial_data_logger.srv import StartLogging, InitLogger
 
 
 class FittingMethod(Enum):
@@ -36,15 +34,19 @@ class Origin_Holding(smach.State):
     def __init__(self):
         smach.State.__init__(self, outcomes=['centered', 'failed'])
         self.origin_joint_angles = [-1.5708, 1.5708, 0, 1.5708, 0, -1.5708, -0.958709]
-        self.desired_joint_pub = rospy.Publisher('DesiredJointSpace', JointState, queue_size=1)
+        # This will publish the calculated joint angles to the Desired JS topic
+        self.desired_joint_pub = rospy.Publisher('/iiwa/PositionController/command', Float64MultiArray, queue_size=1)
         # Initialize the subscriber for CurrentJointSpace
         self.current_joint_angles = []
-        rospy.Subscriber('CurrentJointSpace', JointState, self.current_joint_callback)
-        self.controller_toggle_srv = rospy.ServiceProxy('toggle_admittance_controller', SetBool)
-        self.ik_toggle_srv = rospy.ServiceProxy('toggle_ik', SetBool)
+        # Subscribing to Current Joint Space topic
+        rospy.Subscriber('/iiwa/joint_states', JointState, self.current_joint_callback)
+        # Setting controller behaviour
+        self.controller_toggle_srv = rospy.ServiceProxy('/admit/set_admittance_controller_behaviour', SetInt)
+        # Toggling IK node
+        self.ik_toggle_srv = rospy.ServiceProxy('/ik/toggle_publishing', SetBool)
 
     def current_joint_callback(self, msg):
-        self.current_joint_angles = msg
+        self.current_joint_angles = msg.position
 
     def lerp(A, B, t):
         return A + t * (B - A)
@@ -66,33 +68,44 @@ class Origin_Holding(smach.State):
 
         # May have to make changes to make the message compatible with Desired Joint Space Topic
         for joint_angles in trajectory:
-            joint_state = JointState()
-            joint_state.position = joint_angles
-            self.desired_joint_pub.publish(joint_state)
+            joint_state_msg = Float64MultiArray()
+            joint_state_msg.data = joint_angles
+            self.desired_joint_pub.publish(joint_state_msg)
             rospy.loginfo("Moving to Origin:- Current Joint Angle: {}".format(joint_angles))
             time.sleep(dt)
 
         rospy.loginfo("Robot Centered")
 
-    def toggle_controller_ik(self, enable):
+    def toggle_ik(self, enable):
         try:
-            resp_controller = self.controller_toggle_srv(enable)
+            # resp_controller = self.controller_toggle_srv(enable)
             resp_ik = self.ik_toggle_srv
 
-            if resp_ik.success and resp_controller.success:
-                rospy.loginfo("Nodes Successfully Toggled: {}".format("ON" if enable else "OFF"))
+            if resp_ik.success:
+                rospy.loginfo("Node Successfully Toggled: {}".format("ON" if enable else "OFF"))
             else:
                 rospy.loginfo("Toggle Failed: {}".format(resp.message))
         except rospy.ServiceException as e:
             rospy.logerr("Service Call Failed: {}".format(e))
 
+    def set_controller_behaviour(self, value):
+        try:
+            resp_controller = self.controller_toggle_srv(value)
+            if resp_controller.success:
+                rospy.loginfo("Controller Behaviour set with value: {}".format(value))
+            else:
+                rospy.loginfo("Controller Behaviour couldn't be set (It's going to through a phase): {}"
+                              .format(resp.message))
+        except rospy.ServiceException as e:
+            rospy.logerr("Service call failed: {}".format(e))
+
     def execute(self, userdata):
         # Bring the robot to the center
-        self.toggle_controller_ik(False)
-
+        self.toggle_ik(False)
+        self.set_controller_behaviour(0)
         self.move_to_origin()
 
-        self.toggle_controller_ik(True)
+        self.toggle_ik(True)
 
         return 'centered'
 
@@ -100,8 +113,9 @@ class Origin_Holding(smach.State):
 class Init_Trial(smach.State):
     def __init__(self):
         smach.State.__init__(self, outcomes=['initiated'], output_keys=['subject_num', 'fitting_method'])
-        # Replace placeholder service type
-        self.fitting_service = rospy.ServiceProxy('fitting_method_service', SetFittingMethod)
+        # Setting controller behaviour
+        self.controller_toggle_srv = rospy.ServiceProxy('/admit/set_admittance_controller_behaviour', SetInt)
+        self.fitting_service = rospy.ServiceProxy('/mint/set_motion_intention_type', SetInt)
         self.init_logger_service = rospy.ServiceProxy('init_logger', InitLogger)
 
     def execute(self, userdata):
@@ -146,14 +160,15 @@ class BaseTrialState(smach.State):
         smach.State.__init__(self, outcomes=['fitted'], input_keys=['subject_num', 'fitting_method'],
                              output_keys=['trial_type'])
         self.endEffector = np.array([[0.0], [0.0]])
-        # Post stamped msg:- header, pose
-        self.sub = rospy.Subscriber('CurrentEndEffectorPose', Float64MultiArray, self.end_effector_callback)
+        self.sub = rospy.Subscriber('/iiwa/ee_pose_custom', Float64MultiArray, self.end_effector_callback)
         self.target_pub = rospy.Publisher('CurrentTargets', Float64MultiArray, queue_size=10)
         self.prev_target_pub = rospy.Publisher('PreviousTargets', Float64MultiArray, queue_size=10)
         self.trial_targets_pub = rospy.Publisher('TrialTargets', Float64MultiArray, queue_size=10)
         self.start_logger_service = rospy.ServiceProxy('start_logging', StartLogging)
         self.stop_logger_service = rospy.ServiceProxy('stop_logging', Trigger)
+        self.controller_toggle_srv = rospy.ServiceProxy('/admit/set_admittance_controller_behaviour', SetInt)
 
+    # Does the callback need alteration?
     def end_effector_callback(self, msgs):
         self.endEffector[0][0] = msg.data[0]
         self.endEffector[1][0] = msg.data[1]
@@ -212,7 +227,7 @@ class BaseTrialState(smach.State):
             self.target_pub.publish(target_msg)
 
             while not self.is_close_enough(self.endEffector, targetXY):
-                time.sleep(0.01)
+                time.sleep(0.001)
 
             # Publishing previous targets
             prev_target_msg = Float64MultiArray()  # New message for targetXYold
@@ -233,7 +248,7 @@ class BaseTrialState(smach.State):
             self.prev_target_pub.publish(prev_target_msg)
 
             while not self.is_close_enough(self.endEffector, targetXY):
-                time.sleep(0.01)
+                time.sleep(0.001)
 
             targetXYold = sanity_target
             # Start the trial
@@ -262,7 +277,7 @@ class BaseTrialState(smach.State):
                 self.prev_target_pub.publish(prev_target_msg)
 
                 while not self.is_close_enough(self.endEffector, targetXY):
-                    time.sleep(0.01)
+                    time.sleep(0.001)
 
             # Wait for 5 seconds before the next trial
             targetXY = np.array([[0], [0]])
@@ -276,37 +291,49 @@ class BaseTrialState(smach.State):
 class Calibration(BaseTrialState):
     def __init__(self):
         super().__init__()
-        # Service to toggle MIntNet Node
-        self.mintnet_toggle_srv = rospy.ServiceProxy('toggle_mintnet', SetBool)
 
-    def toggle_mintnet(self, enable):
+    def set_controller_behaviour(self, value):
         try:
-            resp = self.mintnet_toggle_srv(enable)
-            if resp.success:
-                rospy.loginfo("MIntNet Node Successfully Toggled: {}".format("ON" if enable else "OFF"))
+            resp_controller = self.controller_toggle_srv(value)
+            if resp_controller.success:
+                rospy.loginfo("Controller Behaviour set with value: {}".format(value))
             else:
-                rospy.loginfo("Toggle Failed: {}".format(resp.message))
+                rospy.loginfo("Controller Behaviour couldn't be set (It's going to through a phase): {}"
+                              .format(resp.message))
         except rospy.ServiceException as e:
-            rospy.logerr("Service Call Failed: {}".format(e))
+            rospy.logerr("Service call failed: {}".format(e))
 
     def execute(self, userdata):
         # Toggle MIntNet Node off
-        self.toggle_mintnet(False)
+        # self.toggle_mintnet(False)
         userdata.trial_type = 'Calibration'
+        self.set_controller_behaviour(1)
         super().execute(userdata)
 
         # Once trials are completed, toggle MIntNet Node back on
-        self.toggle_mintnet(True)
+        # self.toggle_mintnet(True)
 
-        return 'calibrated'  # or 'recalibrate'
+        return 'calibrated'
 
 
 class Fit_Trial_Block(BaseTrialState):
     def __init__(self):
         super().__init__()
 
+    def set_controller_behaviour(self, value):
+        try:
+            resp_controller = self.controller_toggle_srv(value)
+            if resp_controller.success:
+                rospy.loginfo("Controller Behaviour set with value: {}".format(value))
+            else:
+                rospy.loginfo("Controller Behaviour couldn't be set (It's going to through a phase): {}"
+                              .format(resp.message))
+        except rospy.ServiceException as e:
+            rospy.logerr("Service call failed: {}".format(e))
+
     def execute(self, userdata):
-        userdata.trial_type = 'Calibration'
+        userdata.trial_type = 'Fitting'
+        self.set_controller_behaviour(2)
         super().execute(userdata)
 
         return 'fitted'
