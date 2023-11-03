@@ -6,6 +6,7 @@ import h5py
 from std_srvs.srv import Trigger
 from trial_data_logger.srv import InitLogger, StartLogging
 from std_msgs.msg import Float64MultiArray
+from geometry_msgs.msg import PoseStamped, WrenchStamped, TwistStamped
 
 
 class TrialDataLogger:
@@ -22,24 +23,28 @@ class TrialDataLogger:
         # Subscribers
         self.subscribers = {
             # Current Joint Space
-            'CurrentJointSpace': rospy.Subscriber('CurrentJointSpace', Float64MultiArray, self.callback),
+            '/iiwa/joint_states': rospy.Subscriber('/iiwa/joint_states', JointState, self.callback),
             # Desired Joint State
-            'DesiredJointState': rospy.Subscriber('DesiredJointState', Float64MultiArray, self.callback),
-            # Desired EndEffector Pose, Velocity and Acceleration
-            'DesiredEndEffectorPoseVelAcc': rospy.Subscriber('DesiredEndEffectorPoseVelAcc', Float64MultiArray,
-                                                             self.callback),
+            '/iiwa/PositionController/command': rospy.Subscriber('/iiwa/PositionController/command', Float64MultiArray,
+                                                                 self.callback),
+            # Desired EndEffector Pose
+            '/iiwa/ee_pose': rospy.Subscriber('/iiwa/ee_pose', PoseStamped, self.callback),
             # Current End Effector Pose
-            'CurrentEndEffectorPose': rospy.Subscriber('CurrentEndEffectorPose', Float64MultiArray, self.callback),
+            '/iiwa/ee_pose_custom': rospy.Subscriber('/iiwa/ee_pose_custom', Float64MultiArray, self.callback),
+            # End Effector Velocity
+            '/iiwa/ee_vel': rospy.Subscriber('/iiwa/ee_vel', TwistStamped, self.callback),
+            # End Effector Acceleration
+            '/iiwa/ee_acc': rospy.Subscriber('/iiwa/ee_acc', TwistStamped, self.callback),
             # Measured Wench
-            'MeasuredWench': rospy.Subscriber('MeasuredWench', Float64MultiArray, self.callback),
+            '/sensor_values': rospy.Subscriber('/sensor_values', WrenchStamped, self.callback),
             # Reference Pose
-            'ReferencePose': rospy.Subscriber('ReferencePose', Float64MultiArray, self.callback),
+            '/ee_pose_eq': rospy.Subscriber('ee_pose_eq', PoseStamped, self.callback),
             # Previous Targets
-            'PreviousTargets': rospy.Subscriber('PreviousTargets', Float64MultiArray, self.callback),
+            '/PreviousTargets': rospy.Subscriber('/PreviousTargets', Float64MultiArray, self.callback),
             # Current Targets
-            'CurrentTargets': rospy.Subscriber('CurrentTargets', Float64MultiArray, self.callback),
+            '/CurrentTargets': rospy.Subscriber('/CurrentTargets', Float64MultiArray, self.callback),
             # Trial Targets
-            'TrialTargets': rospy.Subscriber('TrialTargets', Float64MultiArray, self.callback)
+            '/TrialTargets': rospy.Subscriber('/TrialTargets', Float64MultiArray, self.callback)
         }
 
         # File handle for logging
@@ -91,7 +96,26 @@ class TrialDataLogger:
     def callback(self, msg):
         if self.data_group:
             # Convert the data to a list and store in the HDF5 file
-            data_set = self.data_group.create_dataset(msg._type, data=list(msg.data))
+            if isinstance(msg, Float64MultiArray):
+                data_set = self.data_group.create_dataset(msg._type, data=list(msg.data))
+            elif isinstance(msg, PoseStamped):
+                data_set = self.data_group.create_dataset(msg._type, data=[msg.pose.position.x, msg.pose.position.y,
+                                                                           msg.pose.position.z, msg.pose.orientation.x,
+                                                                           msg.pose.orientation.y,
+                                                                           msg.pose.orientation.z,
+                                                                           msg.pose.orientation.w])
+            elif isinstance(msg, TwistStamped):
+                data_set = self.data_group.create_dataset(msg._type, data=[msg.twist.linear.x, msg.twist.linear.y,
+                                                                           msg.twist.linear.z, msg.twist.angular.x,
+                                                                           msg.twist.angular.y, msg.twist.angular.z])
+            elif isinstance(msg, WrenchStamped):
+                data_set = self.data_group.create_dataset(msg._type, data=[msg.wrench.force.x, msg.wrench.force.y,
+                                                                           msg.wrench.force.z, msg.wrench.torque.x,
+                                                                           msg.wrench.torque.y, msg.wrench.torque.z])
+            elif isinstance(msg, JointState):
+                data_set = self.data_group.create_dataset(msg._type, data=list(msg.position))
+            else:
+                rospy.logwarn(f"Unsupported message type: {type(msg)}")
 
 
 if __name__ == '__main__':
