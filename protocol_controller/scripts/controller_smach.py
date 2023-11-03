@@ -11,7 +11,7 @@ from std_srvs.srv import SetBool, Trigger
 from std_msgs.msg import Float64MultiArray
 from enum import Enum
 from motion_intention.srv import SetInt
-from trial_data_logger.srv import StartLogging, InitLogger, StopLogging
+from trial_data_logger.srv import StartLogging, InitLogger
 
 
 class FittingMethod(Enum):
@@ -46,7 +46,7 @@ class Origin_Holding(smach.State):
         self.ik_toggle_srv = rospy.ServiceProxy('/ik/toggle_publishing', SetBool)
 
     def current_joint_callback(self, msg):
-        self.current_joint_angles = msg
+        self.current_joint_angles = msg.position
 
     def lerp(A, B, t):
         return A + t * (B - A)
@@ -88,7 +88,7 @@ class Origin_Holding(smach.State):
         except rospy.ServiceException as e:
             rospy.logerr("Service Call Failed: {}".format(e))
 
-    def set_controller_behaviour(self, val):
+    def set_controller_behaviour(self, value):
         try:
             resp_controller = self.controller_toggle_srv(value)
             if resp_controller.success:
@@ -168,6 +168,7 @@ class BaseTrialState(smach.State):
         self.stop_logger_service = rospy.ServiceProxy('stop_logging', Trigger)
         self.controller_toggle_srv = rospy.ServiceProxy('/admit/set_admittance_controller_behaviour', SetInt)
 
+    # Does the callback need alteration?
     def end_effector_callback(self, msgs):
         self.endEffector[0][0] = msg.data[0]
         self.endEffector[1][0] = msg.data[1]
@@ -226,7 +227,7 @@ class BaseTrialState(smach.State):
             self.target_pub.publish(target_msg)
 
             while not self.is_close_enough(self.endEffector, targetXY):
-                time.sleep(0.01)
+                time.sleep(0.001)
 
             # Publishing previous targets
             prev_target_msg = Float64MultiArray()  # New message for targetXYold
@@ -247,7 +248,7 @@ class BaseTrialState(smach.State):
             self.prev_target_pub.publish(prev_target_msg)
 
             while not self.is_close_enough(self.endEffector, targetXY):
-                time.sleep(0.01)
+                time.sleep(0.001)
 
             targetXYold = sanity_target
             # Start the trial
@@ -276,7 +277,7 @@ class BaseTrialState(smach.State):
                 self.prev_target_pub.publish(prev_target_msg)
 
                 while not self.is_close_enough(self.endEffector, targetXY):
-                    time.sleep(0.01)
+                    time.sleep(0.001)
 
             # Wait for 5 seconds before the next trial
             targetXY = np.array([[0], [0]])
@@ -290,21 +291,8 @@ class BaseTrialState(smach.State):
 class Calibration(BaseTrialState):
     def __init__(self):
         super().__init__()
-        # Service to toggle MIntNet Node
-        # Placeholder, will need to change
-        self.mintnet_toggle_srv = rospy.ServiceProxy('/mintnet/set_admittance_controller_behaviour', SetInt)
 
-    def toggle_mintnet(self, enable):
-        try:
-            resp = self.mintnet_toggle_srv(enable)
-            if resp.success:
-                rospy.loginfo("MIntNet Node Successfully Toggled: {}".format("ON" if enable else "OFF"))
-            else:
-                rospy.loginfo("Toggle Failed: {}".format(resp.message))
-        except rospy.ServiceException as e:
-            rospy.logerr("Service Call Failed: {}".format(e))
-
-    def set_controller_behaviour(self, val):
+    def set_controller_behaviour(self, value):
         try:
             resp_controller = self.controller_toggle_srv(value)
             if resp_controller.success:
@@ -317,22 +305,22 @@ class Calibration(BaseTrialState):
 
     def execute(self, userdata):
         # Toggle MIntNet Node off
-        self.toggle_mintnet(False)
+        # self.toggle_mintnet(False)
         userdata.trial_type = 'Calibration'
         self.set_controller_behaviour(1)
         super().execute(userdata)
 
         # Once trials are completed, toggle MIntNet Node back on
-        self.toggle_mintnet(True)
+        # self.toggle_mintnet(True)
 
-        return 'calibrated'  # or 'recalibrate'
+        return 'calibrated'
 
 
 class Fit_Trial_Block(BaseTrialState):
     def __init__(self):
         super().__init__()
 
-    def set_controller_behaviour(self, val):
+    def set_controller_behaviour(self, value):
         try:
             resp_controller = self.controller_toggle_srv(value)
             if resp_controller.success:
