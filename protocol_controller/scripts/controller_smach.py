@@ -51,6 +51,10 @@ class Origin_Holding(smach.State):
     def lerp(A, B, t):
         return A + t * (B - A)
 
+    def max_velocity(self, start_angles, end_angles, total_duration):
+        maxvel = max([abs(end - start) for start, end in zip(start_angles, end_angles)]) / total_duration
+        return maxvel
+
     def move_to_origin(self):
         if not self.current_joint_angles:
             rospy.logwarn("Current Joint Angles Unavailable: Cannot move to Origin")
@@ -58,21 +62,30 @@ class Origin_Holding(smach.State):
 
         # Using a timed interval instead of sleep()
         rospy.loginfo("Current Joint Angles: {}".format(self.current_joint_angles))
-        num_points = 100
-        time_points = np.linespace(0.0, 1.0, num_points)
         total_duration = 5.0
+        max_velocity = calculate_max_velocity(current_joint_angles, origin_joint_angles, total_duration)
+        velocity_threshold = 0.01
+        while max_velocity > velocity_threshold:
+            total_duration += 1
+            max_velocity = calculate_max_velocity(self.current_joint_angles, self.origin_joint_angles, total_duration)
 
-        dt = total_duration / num_points
+        freq = 20
+        num_points = int(total_duration*freq)
+        time_points = np.linespace(0.0, 1.0, num_points)
+        # dt = total_duration / num_points
 
         trajectory = [lerp(self.current_joint_angles, self.origin_joint_angles, t) for t in time_points]
 
+        start_time = time.time()
         # May have to make changes to make the message compatible with Desired Joint Space Topic
-        for joint_angles in trajectory:
+        for idx, joint_angles in enumerate(trajectory):
             joint_state_msg = Float64MultiArray()
             joint_state_msg.data = joint_angles
+            while time.time() - start_time < idx * dt:
+                pass
             self.desired_joint_pub.publish(joint_state_msg)
             rospy.loginfo("Moving to Origin:- Current Joint Angle: {}".format(joint_angles))
-            time.sleep(dt)
+            # time.sleep(dt)
 
         rospy.loginfo("Robot Centered")
 
