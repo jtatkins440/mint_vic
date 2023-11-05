@@ -7,68 +7,67 @@
 using json = nlohmann::json;
 using namespace torch::indexing;
 
+#include "circle.h"
+#include "circleutils.h"
+#include "circlefit.h"
+
 class MIntSpline{
 	public:
-		MIntSpline(){};
+	MIntSpline(){};
 
-		MIntSpline(std::vector<double> spline_time, int spline_dim, double lead_time) {
-			// put in the current state's time and append the times for the prediction vector
-			//spline_time_vec.push_back(0.0);
-			for (int i = 0; i < spline_time.size(); i++) {
-				spline_time_vec.push_back(spline_time[i]);
-			}
-			
-			// one spline for each dim of the prediction
-			_spline_dim = spline_dim;
-			for (int i = 0; i < spline_dim; i++) {
-				tk::spline s;
-				spline_vec.push_back(s);
-			}
-			equilibrium_lead_time = lead_time;
-			max_sample_time = spline_time_vec[spline_time_vec.size() - 1]; // don't allow sampling further than the end of the prediction window
-		};
+	MIntSpline(std::vector<double> spline_time, int spline_dim, double lead_time) {
+		// put in the current state's time and append the times for the prediction vector
+		for (int i = 0; i < spline_time.size(); i++) {
+			spline_time_vec.push_back(spline_time[i]);
+		}
+		
+		// one spline for each dim of the prediction
+		_spline_dim = spline_dim;
+		for (int i = 0; i < spline_dim; i++) {
+			tk::spline s;
+			spline_vec.push_back(s);
+		}
+		equilibrium_lead_time = lead_time;
+		max_sample_time = spline_time_vec[spline_time_vec.size() - 1]; // don't allow sampling further than the end of the prediction window
+	};
 
 	void updateSpline(Eigen::ArrayXf current_state, Eigen::ArrayXXf pred_pos);
 	Eigen::ArrayXf sampleSpline(double sample_time);
 	Eigen::ArrayXf sampleEquilibriumPoint();
-	double equilibrium_lead_time = 0.0;
+	double equilibrium_lead_time;
 	
 
 	private:
-		int _spline_dim;
-		std::vector<tk::spline> spline_vec;
-		std::vector<double> spline_time_vec;
-		std::chrono::time_point<std::chrono::steady_clock> spline_timer_start;
-		double max_sample_time = 0.0;
+	int _spline_dim;
+	std::vector<tk::spline> spline_vec;
+	std::vector<double> spline_time_vec;
+	std::chrono::time_point<std::chrono::steady_clock> spline_timer_start;
+	double max_sample_time;
 };
 
 void MIntSpline::updateSpline(Eigen::ArrayXf current_state, Eigen::ArrayXXf pred_pos) {
 
 	// shifts relative positions to global 
-	//std::cout << "spline_dim: " << _spline_dim << std::endl;
+	std::vector<tk::spline> spline_vec_temp;
 	for (int i = 0; i < _spline_dim; i++) {
-		//std::cout << "updateSpline, interation " << i << std::endl;
 		for (int j = 0; j < pred_pos.cols(); j++) {
 			pred_pos(i, j) = pred_pos(i, j) + current_state(i);
 		}
 		std::vector<double> spline_points;
 
-		//spline_points.push_back(current_state(i)); // for 
 		for (int j = 0; j < pred_pos.cols(); j++) {
 			spline_points.push_back((double) pred_pos(i, j));
 		}
 
 		double end_vel_est = (pred_pos(i, pred_pos.cols()-1) - pred_pos(i, pred_pos.cols()-2)) / (spline_time_vec[spline_time_vec.size()-1] - spline_time_vec[spline_time_vec.size()-2]);
-		spline_vec[i].set_boundary(tk::spline::first_deriv, current_state(i + _spline_dim), 
+		tk::spline s;
+		s.set_boundary(tk::spline::first_deriv, (double) current_state(i + _spline_dim), 
 			tk::spline::first_deriv, end_vel_est);
 
-		//std::cout << "times: " << spline_time_vec << std::endl;
-		//std::cout << "points: " << spline_points << std::endl;
-
-		spline_vec[i].set_points(spline_time_vec, spline_points); // one spline for each dim of the prediction
-		//std::cout << "after set_points..." << std::endl;
+		s.set_points(spline_time_vec, spline_points); // one spline for each dim of the prediction
+		spline_vec_temp.push_back(s);
 	}
-	//std::cout << "before spliner_timer_start..." << std::endl;
+	spline_vec.swap(spline_vec_temp);
 	spline_timer_start = std::chrono::steady_clock::now(); // time point for when the spline was last updated
 	return;
 };
@@ -103,6 +102,8 @@ Eigen::ArrayXf MIntSpline::sampleEquilibriumPoint(){
 
 class MIntWrapper{
 	public:
+	MIntWrapper(){};
+	
 	MIntWrapper(std::string model_path, std::string json_path) : mint_path(model_path), param_path(json_path) {
 		// guard this in a try/catch block!
 		
@@ -260,17 +261,187 @@ Eigen::ArrayXXf MIntWrapper::forward(Eigen::ArrayXXf input)
 
 void MIntWrapper::fit(Eigen::ArrayXf current_state, std::deque<Eigen::ArrayXf> input)
 {
-	auto pred_pos = forward(input);
+	Eigen::ArrayXXf pred_pos = forward(input);
 	mintspline.updateSpline(current_state, pred_pos);
 };
 
 void MIntWrapper::fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input)
 {
-	auto pred_pos = forward(input);
+	Eigen::ArrayXXf pred_pos = forward(input);
 	mintspline.updateSpline(current_state, pred_pos);
 };
 
 Eigen::ArrayXf MIntWrapper::getEquilibriumPoint()
 {
 	return mintspline.sampleEquilibriumPoint();
+};
+
+// LineFitWrapper expects to be passed the current state as a [position; velocity] vector and the input as a 2x125 array of 
+class LineFitWrapper{
+	public:
+	LineFitWrapper(){};
+
+	LineFitWrapper(std::string json_path) : param_path(json_path) {
+		std::ifstream f(param_path);
+		params = json::parse(f);
+		json data_helper = params["helper_params"];
+		json data_model = params["mdl_params"];
+		input_chn_size = int(data_model["input_size"]);
+		output_chn_size = int(data_model["output_size"]);
+		input_seq_length = int(data_helper["input_sequence_length"]);
+		output_seq_length = int(data_model["M"]) * int(data_model["G"]);
+		equilibrium_lead_time = (float) data_helper["lead_time"];
+		dt = (float) data_helper["dt"];
+
+		// generate observation 'X' array as a 125x2 array where column 0 is just 1's and column 1 is time corresponding to each input. Should be static.
+		//Eigen::MatrixXf A(input_seq_length, output_chn_size);
+		A = Eigen::MatrixXf::Zero(input_seq_length, output_chn_size);
+		for (int row = 0; row < input_seq_length; row++){
+			A(row, 0) = 1.0;
+			A(row, 1) = ((float)(input_seq_length - row - 1)) * dt;
+		}
+		//std::cout << "A.rows(): " << A.rows() << ", A.cols(): " << A.cols() << std::endl;
+		
+		//A_QR = A.fullPivHouseholderQR(); // QR decomp of A. to solve matrix eq, just do A_QR.solve(Y) where Y are the 'inputs' or the positions for each dimension.
+		
+		// 
+		model_order = 2; // hardcoding is bad! stop it.
+		b_coeffs = Eigen::MatrixXf::Zero(model_order, output_chn_size);
+		b_coeffs << 0.0, 0.0, 
+					0.0, 0.0; // rows should be [b_0; b_1], cols should be dims [x, y];
+		
+		timer_start = std::chrono::steady_clock::now();
+	};
+
+	//void fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input);
+	//Eigen::ArrayXf getEquilibriumPoint();
+
+	void fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input){
+		// current state is ignored, only here because of compatibility with ROS wrapper
+		// input is assumed to be 2x125 of [p_x, p_y] values.
+		Eigen::MatrixXf Y_full = input.matrix().transpose();
+
+		// find b coeffs for each dim.
+		for (int dim = 0; dim < output_chn_size; dim++){
+			//Eigen::MatrixXXf b_col_temp = A_QR.solve(Y_full(all, dim));
+			//Eigen::MatrixXf Y = Y_full(Eigen::all, dim);
+			Eigen::VectorXf Y = Y_full(Eigen::all, dim);
+			std::cout << "Y.rows(): " << Y.rows() << ", Y.cols(): " << Y.cols() << std::endl;
+			std::cout << "A.rows(): " << A.rows() << ", A.cols(): " << A.cols() << std::endl;
+			std::cout << "vals are: " << A.fullPivHouseholderQr().solve(Y) << std::endl;
+			b_coeffs(Eigen::all, dim) = A.fullPivHouseholderQr().solve(Y);
+		}
+		timer_start = std::chrono::steady_clock::now();
+	};
+
+	Eigen::ArrayXf getEquilibriumPoint(){
+		auto end = std::chrono::steady_clock::now();
+		std::chrono::duration<double> diff = end - timer_start;
+		double spline_eq_time = diff.count() + equilibrium_lead_time;
+
+		Eigen::ArrayXf eq_point(output_chn_size);
+		eq_point << b_coeffs(0,0) + b_coeffs(1, 0) * spline_eq_time, b_coeffs(0,1) + b_coeffs(1, 1) * spline_eq_time;
+
+		return eq_point;
+	}; 
+
+	private:
+	json params;
+	std::string param_path;
+	int input_chn_size;
+	int output_chn_size;
+	int input_seq_length;
+	int output_seq_length;
+	int model_order;
+	float equilibrium_lead_time;
+	float dt;
+	std::chrono::time_point<std::chrono::steady_clock> timer_start;
+	Eigen::MatrixXf A;
+	Eigen::MatrixXf b_coeffs;
+
+	
+};
+
+
+// CircleFitWrapper expects to be passed the current state as a [position; velocity] vector and the input as a 2x125 array of 
+class CircleFitWrapper{
+	public:
+	CircleFitWrapper(){};
+
+	CircleFitWrapper(std::string json_path) : param_path(json_path) {
+		std::ifstream f(param_path);
+		params = json::parse(f);
+		json data_helper = params["helper_params"];
+		json data_model = params["mdl_params"];
+		input_chn_size = int(data_model["input_size"]);
+		output_chn_size = int(data_model["output_size"]);
+		input_seq_length = int(data_helper["input_sequence_length"]);
+		output_seq_length = int(data_model["M"]) * int(data_model["G"]);
+		eq_lead_time = (float) data_helper["lead_time"];
+		dt = (float) data_helper["dt"];
+
+		// generate observation 'X' array as a 125x2 array where column 0 is just 1's and column 1 is time corresponding to each input. Should be static.
+
+		// TODO: add circle stuff too
+		//Eigen::MatrixXf x_eq(output_chn_size);
+		x_eq = Eigen::MatrixXf::Zero(output_chn_size, 1);
+		Circle circle;
+
+		timer_start = std::chrono::steady_clock::now();
+	};
+
+	//void fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input);
+	//Eigen::ArrayXf getEquilibriumPoint();
+	Circle circle;
+
+	// UPDATE
+	void fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input){
+		// current state is ignored, only here because of compatibility with ROS wrapper
+		// input is assumed to be 2x125 of [p_x, p_y] values.
+
+		int size = input.cols();
+		double x_array[size];
+		double y_array[size];
+		for (int i = 0; i < size; i++){
+			x_array[i] = input(0, i); // x_pos
+			y_array[i] = input(1, i); // y_pos
+		}
+
+		CircleData Datafitcircle(size, x_array, y_array);
+		circle = CircleFitByPratt(Datafitcircle);
+
+
+		x_eq(0) = circle.a + circle.r*(current_state(0)-circle.a)/(sqrt(pow(current_state(0)-circle.a,2)+pow(current_state(1)-circle.b,2)));
+		x_eq(1) = circle.b + (x_eq(0)-circle.a)*(current_state(1)-circle.b)/(current_state(0)-circle.a);
+
+		//x_eq(0) = projected(0);
+		//x_eq(1) = projected(1);
+		//angleproj = atan2(projected(1)-xcurrent(1),projected(0)-xcurrent(0));
+
+		timer_start = std::chrono::steady_clock::now(); // timing not used in OG implimentation, just return same ol' point
+	}
+
+	// UPDATE
+	Eigen::ArrayXf getEquilibriumPoint(){
+		return x_eq;
+	}; 
+	
+	private:
+	std::string param_path;
+	json params;
+	int input_chn_size;
+	int output_chn_size;
+	int input_seq_length;
+	int output_seq_length;
+	int model_order;
+	float eq_lead_time;
+	float dt;
+	std::chrono::time_point<std::chrono::steady_clock> timer_start;
+	//Eigen::FullPivHouseholderQR:::FullPivHouseholderQR<Eigen::MatrixXf> A_QR;
+	Eigen::MatrixXf A;
+	Eigen::MatrixXf x_eq;
+	
+
+
+	
 };

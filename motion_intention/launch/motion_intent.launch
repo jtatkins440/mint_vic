@@ -1,0 +1,9 @@
+<launch>
+    <group ns="mint">
+    	<node name="history_handler" pkg="motion_intention" type="history_handler.py" />
+    	<rosparam file="$(find motion_intention)/config/mint_config.yaml" />
+    	<param name="hparam_json_path" type="string" value="$(find motion_intention)/config/hyper_params.json" />
+    	<param name="model_weights_path" type="string" value="$(find motion_intention)/config/traced_mintnet_epochs_10.pt" />
+    	<node name="mint" pkg="motion_intention" type="motion_intention_node" />
+    </group>
+</launch>
