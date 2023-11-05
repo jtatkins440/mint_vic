@@ -73,10 +73,10 @@ int main(int argc, char **argv) {
         gui_data[7] = targetXY(0);
         gui_data[8] = targetXY(1);
         gui_data[9] = ex_r;
-        gui_data[10] = stiffness(2, 2);
-        gui_data[11] = (float) (trialNum);
+        gui_data[10] = (double) 0 //stiffness(2, 2);
+        gui_data[11] = 7 //(float) (trialNum);
         gui_data[12] = (float) (7);
-        gui_data[13] = stiffness(0, 0);
+        gui_data[13] = (double) 0 //stiffness(0, 0);
         gui_data[14] = (double) 0;//beep_flag;
         gui_data[15] = (double) guiMode2;
         gui_data[16] = (double) guiMode3;
