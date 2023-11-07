@@ -346,7 +346,7 @@ class Fit_Trial_Block(BaseTrialState):
 
     def execute(self, userdata):
         userdata.trial_type = 'Fitting'
-        self.set_controller_behaviour(2)
+        self.set_controller_behaviour(3)
         super().execute(userdata)
 
         return 'fitted'
