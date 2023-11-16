@@ -272,7 +272,9 @@ void MIntNodeWrapper::mainLoop() {
 	
 	ros::Rate r(inference_rate);
 
-	static tf2_ros::TransformBroadcaster br;
+	//static tf2_ros::TransformBroadcaster br;
+
+	/*
 	geometry_msgs::TransformStamped transformStamped;
 	transformStamped.header.frame_id = "world";
 	transformStamped.child_frame_id = "ee_eq";
@@ -281,7 +283,7 @@ void MIntNodeWrapper::mainLoop() {
 	transformStamped.transform.rotation.y = 0.0;
 	transformStamped.transform.rotation.z = 0.0;
 	transformStamped.transform.rotation.w = 1.0;
-
+	*/
 	
 
 	while (ros::ok()){
@@ -306,9 +308,10 @@ void MIntNodeWrapper::mainLoop() {
 			pose_s.pose.position.z = eq_pose(1);
 			pose_s.pose.orientation.w = 1.0;
 			pose_s.header.frame_id = "ee_eq";
-			pose_s.header.stamp = ros::Time::now();;
+			pose_s.header.stamp = ros::Time::now();
 			//std::cout << "Got new eq_pose! It's: "<< eq_pose << std::endl;
 
+			/*
 			geometry_msgs::TransformStamped transformStamped;
 			transformStamped.header.frame_id = "world";
 			transformStamped.child_frame_id = "ee_eq";
@@ -321,10 +324,11 @@ void MIntNodeWrapper::mainLoop() {
 			transformStamped.header.stamp = ros::Time::now();
 			transformStamped.transform.translation.x = eq_pose(0);
 			transformStamped.transform.translation.z = eq_pose(1);
+			*/
 		}
 
 		pub.publish(pose_s);
-		br.sendTransform(transformStamped);
+		//br.sendTransform(transformStamped);
 
 		ros::spinOnce();
 		r.sleep();
