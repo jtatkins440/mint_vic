@@ -14,11 +14,6 @@ from motion_intention.srv import SetInt
 from trial_data_logger.srv import StartLogging, InitLogger
 
 
-class FittingMethod(Enum):
-    MINTNET = 1
-    CIRCLE_FITTING = 2
-    LINEAR_FITTING = 3
-
 
 # Define the individual states
 class Initial_State(smach.State):
@@ -41,17 +36,17 @@ class Origin_Holding(smach.State):
         # Subscribing to Current Joint Space topic
         rospy.Subscriber('/iiwa/joint_states', JointState, self.current_joint_callback)
         # Setting controller behaviour
-        self.controller_toggle_srv = rospy.ServiceProxy('/admit/set_admittance_controller_behaviour', SetInt)
+        self.controller_toggle_srv = rospy.ServiceProxy('/admit/set_admittance_controller_behavior', SetInt)
         # Toggling IK node
         self.ik_toggle_srv = rospy.ServiceProxy('/ik/toggle_publishing', SetBool)
 
     def current_joint_callback(self, msg):
         self.current_joint_angles = msg.position
 
-    def lerp(A, B, t):
-        return A + t * (B - A)
+    def lerp(self, A, B, t):
+        return [a + (b - a)*t for a, b in zip(A, B)]
 
-    def max_velocity(self, start_angles, end_angles, total_duration):
+    def calculate_max_velocity(self, start_angles, end_angles, total_duration):
         maxvel = max([abs(end - start) for start, end in zip(start_angles, end_angles)]) / total_duration
         return maxvel
 
@@ -63,18 +58,18 @@ class Origin_Holding(smach.State):
         # Using a timed interval instead of sleep()
         rospy.loginfo("Current Joint Angles: {}".format(self.current_joint_angles))
         total_duration = 5.0
-        max_velocity = calculate_max_velocity(current_joint_angles, origin_joint_angles, total_duration)
-        velocity_threshold = 0.01
+        max_velocity = self.calculate_max_velocity(self.current_joint_angles, self.origin_joint_angles, total_duration)
+        velocity_threshold = 0.1
         while max_velocity > velocity_threshold:
             total_duration += 1
-            max_velocity = calculate_max_velocity(self.current_joint_angles, self.origin_joint_angles, total_duration)
+            max_velocity = self.calculate_max_velocity(self.current_joint_angles, self.origin_joint_angles, total_duration)
 
         freq = 20
         num_points = int(total_duration*freq)
-        time_points = np.linespace(0.0, 1.0, num_points)
-        # dt = total_duration / num_points
+        time_points = np.linspace(0.0, 1.0, num_points)
+        dt = total_duration / num_points
 
-        trajectory = [lerp(self.current_joint_angles, self.origin_joint_angles, t) for t in time_points]
+        trajectory = [self.lerp(self.current_joint_angles, self.origin_joint_angles, t) for t in time_points]
 
         start_time = time.time()
         # May have to make changes to make the message compatible with Desired Joint Space Topic
@@ -84,7 +79,7 @@ class Origin_Holding(smach.State):
             while time.time() - start_time < idx * dt:
                 pass
             self.desired_joint_pub.publish(joint_state_msg)
-            rospy.loginfo("Moving to Origin:- Current Joint Angle: {}".format(joint_angles))
+            #rospy.loginfo("Moving to Origin:- Current Joint Angle: {}".format(joint_angles))
             # time.sleep(dt)
 
         rospy.loginfo("Robot Centered")
@@ -92,12 +87,12 @@ class Origin_Holding(smach.State):
     def toggle_ik(self, enable):
         try:
             # resp_controller = self.controller_toggle_srv(enable)
-            resp_ik = self.ik_toggle_srv
+            resp_ik = self.ik_toggle_srv(enable)
 
             if resp_ik.success:
                 rospy.loginfo("Node Successfully Toggled: {}".format("ON" if enable else "OFF"))
             else:
-                rospy.loginfo("Toggle Failed: {}".format(resp.message))
+                rospy.loginfo("Toggle Failed: {}".format(resp_ik.message))
         except rospy.ServiceException as e:
             rospy.logerr("Service Call Failed: {}".format(e))
 
@@ -108,12 +103,13 @@ class Origin_Holding(smach.State):
                 rospy.loginfo("Controller Behaviour set with value: {}".format(value))
             else:
                 rospy.loginfo("Controller Behaviour couldn't be set (It's going to through a phase): {}"
-                              .format(resp.message))
+                              .format(resp_controller.message))
         except rospy.ServiceException as e:
             rospy.logerr("Service call failed: {}".format(e))
 
     def execute(self, userdata):
         # Bring the robot to the center
+        time.sleep(4) # Apparently gazebo doesn't work instantenously 
         self.toggle_ik(False)
         self.set_controller_behaviour(0)
         self.move_to_origin()
@@ -127,27 +123,20 @@ class Init_Trial(smach.State):
     def __init__(self):
         smach.State.__init__(self, outcomes=['initiated'], output_keys=['subject_num', 'fitting_method'])
         # Setting controller behaviour
-        self.controller_toggle_srv = rospy.ServiceProxy('/admit/set_admittance_controller_behaviour', SetInt)
+        self.controller_toggle_srv = rospy.ServiceProxy('/admit/set_admittance_controller_behavior', SetInt)
         self.fitting_service = rospy.ServiceProxy('/mint/set_motion_intention_type', SetInt)
         self.init_logger_service = rospy.ServiceProxy('init_logger', InitLogger)
+        
 
     def execute(self, userdata):
-        subject_num = input("Enter the Subject's Number: ")
+        print("Hello")
+        subject_num = int(input("Enter the Subject's Number: "))
         print("Choose a fitting method:")
         print("1. MIntNet")
         print("2. Circle Fitting")
         print("3. Linear Fitting")
-        choice = input("Enter your choice (1/2/3): ")
+        method = int(input("Enter your choice (1/2/3): "))
 
-        if choice == "1":
-            method = FittingMethod.MINTNET.value
-        elif choice == "2":
-            method = FittingMethod.CIRCLE_FITTING.value
-        elif choice == "3":
-            method = FittingMethod.LINEAR_FITTING.value
-        else:
-            print("Invalid choice. Defaulting to MIntNet.")
-            method = FittingMethod.MINTNET.value
 
         # Send the chosen method to the MIntNet node via a service
         try:
@@ -165,6 +154,9 @@ class Init_Trial(smach.State):
         except rospy.ServiceException as e:
             rospy.logerr("Service Call Failed: %s", e)
 
+        userdata.subject_num = subject_num
+        userdata.fitting_method = method
+        print("from the other side")
         return 'initiated'
 
 
@@ -179,10 +171,10 @@ class BaseTrialState(smach.State):
         self.trial_targets_pub = rospy.Publisher('TrialTargets', Float64MultiArray, queue_size=10)
         self.start_logger_service = rospy.ServiceProxy('start_logging', StartLogging)
         self.stop_logger_service = rospy.ServiceProxy('stop_logging', Trigger)
-        self.controller_toggle_srv = rospy.ServiceProxy('/admit/set_admittance_controller_behaviour', SetInt)
+        self.controller_toggle_srv = rospy.ServiceProxy('/admit/set_admittance_controller_behavior', SetInt)
 
     # Does the callback need alteration?
-    def end_effector_callback(self, msgs):
+    def end_effector_callback(self, msg):
         self.endEffector[0][0] = msg.data[0]
         self.endEffector[1][0] = msg.data[1]
 
@@ -303,7 +295,7 @@ class BaseTrialState(smach.State):
 
 class Calibration(BaseTrialState):
     def __init__(self):
-        super().__init__()
+        super(Calibration, self).__init__()
 
     def set_controller_behaviour(self, value):
         try:
@@ -312,7 +304,7 @@ class Calibration(BaseTrialState):
                 rospy.loginfo("Controller Behaviour set with value: {}".format(value))
             else:
                 rospy.loginfo("Controller Behaviour couldn't be set (It's going to through a phase): {}"
-                              .format(resp.message))
+                              .format(resp_controller.message))
         except rospy.ServiceException as e:
             rospy.logerr("Service call failed: {}".format(e))
 
@@ -321,7 +313,7 @@ class Calibration(BaseTrialState):
         # self.toggle_mintnet(False)
         userdata.trial_type = 'Calibration'
         self.set_controller_behaviour(1)
-        super().execute(userdata)
+        super(Calibration, self).execute(userdata)
 
         # Once trials are completed, toggle MIntNet Node back on
         # self.toggle_mintnet(True)
@@ -331,7 +323,7 @@ class Calibration(BaseTrialState):
 
 class Fit_Trial_Block(BaseTrialState):
     def __init__(self):
-        super().__init__()
+        super(Fit_Trial_Block, self).__init__()
 
     def set_controller_behaviour(self, value):
         try:
@@ -340,14 +332,14 @@ class Fit_Trial_Block(BaseTrialState):
                 rospy.loginfo("Controller Behaviour set with value: {}".format(value))
             else:
                 rospy.loginfo("Controller Behaviour couldn't be set (It's going to through a phase): {}"
-                              .format(resp.message))
+                              .format(resp_controller.message))
         except rospy.ServiceException as e:
             rospy.logerr("Service call failed: {}".format(e))
 
     def execute(self, userdata):
         userdata.trial_type = 'Fitting'
         self.set_controller_behaviour(3)
-        super().execute(userdata)
+        super(Fit_Trial_Block, self).execute(userdata)
 
         return 'fitted'
 
@@ -358,6 +350,9 @@ def main():
     # Create a top-level state machine
     sm_top = smach.StateMachine(outcomes=['success', 'failure'], input_keys=[], output_keys=[])
 
+    sm_top.userdata.fitting_method = 0
+    sm_top.userdata.subject_num = 0
+
     with sm_top:
         smach.StateMachine.add('INITIAL_STATE', Initial_State(),
                                transitions={'initialized': 'ORIGIN_HOLDING', 'failed': 'failure'})
@@ -367,11 +362,12 @@ def main():
 
         # Trial Set State Machine (Hierarchical)
         sm_trial_set = smach.StateMachine(outcomes=['trial_complete', 'trial_failed'],
-                                          input_keys=['subject_num', 'fitting_method'], output_keys=['trial_type'])
+                                          input_keys=['subject_num', 'fitting_method'], output_keys=['trial_type', 'subject_num', 'fitting_method'])
+        
         with sm_trial_set:
             smach.StateMachine.add('INIT_TRIAL', Init_Trial(), transitions={'initiated': 'CALIBRATION'})
             smach.StateMachine.add('CALIBRATION', Calibration(),
-                                   transitions={'calibrated': 'FIT_TRIAL_BLOCK', 'recalibrate': 'INIT_TRIAL'})
+                                   transitions={'fitted': 'FIT_TRIAL_BLOCK'})
 
             # Fit trial block can be chosen based on the method: 'circle_fitting', 'linear_fitting', 'neural_network'
             smach.StateMachine.add('FIT_TRIAL_BLOCK', Fit_Trial_Block(),
