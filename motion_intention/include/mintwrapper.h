@@ -279,6 +279,20 @@ Eigen::ArrayXf MIntWrapper::getEquilibriumPoint()
 // LineFitWrapper expects to be passed the current state as a [position; velocity] vector and the input as a 2x125 array of 
 class LineFitWrapper{
 	public:
+
+	json params;
+	std::string param_path;
+	int input_chn_size;
+	int output_chn_size;
+	int input_seq_length;
+	int output_seq_length;
+	int model_order;
+	float equilibrium_lead_time;
+	float dt;
+	std::chrono::time_point<std::chrono::steady_clock> timer_start;
+	Eigen::MatrixXf A;
+	Eigen::MatrixXf b_coeffs;
+
 	LineFitWrapper(){};
 
 	LineFitWrapper(std::string json_path) : param_path(json_path) {
@@ -293,9 +307,11 @@ class LineFitWrapper{
 		equilibrium_lead_time = (float) data_helper["lead_time"];
 		dt = (float) data_helper["dt"];
 
+
 		// generate observation 'X' array as a 125x2 array where column 0 is just 1's and column 1 is time corresponding to each input. Should be static.
 		//Eigen::MatrixXf A(input_seq_length, output_chn_size);
 		A = Eigen::MatrixXf::Zero(input_seq_length, output_chn_size);
+		std::cout << "LineFitWrapper Constructor: " << "A.rows(): " << A.rows() << ", A.cols(): " << A.cols() << std::endl;
 		for (int row = 0; row < input_seq_length; row++){
 			A(row, 0) = 1.0;
 			A(row, 1) = ((float)(input_seq_length - row - 1)) * dt;
@@ -321,14 +337,26 @@ class LineFitWrapper{
 		// input is assumed to be 2x125 of [p_x, p_y] values.
 		Eigen::MatrixXf Y_full = input.matrix().transpose();
 
+		
+		// rebuild A (shouldn't need to do this outside of constructor, weird behavior)
+		//Eigen::MatrixXf A(input_seq_length, output_chn_size);
+		//std::cout << "LineFitWrapper fit: " << "Before MatrixXf::Zero, input_seq_length: " << input_seq_length << ", output_chn_size: " << output_chn_size << std::endl;
+		//A = Eigen::MatrixXf::Zero(input_seq_length, output_chn_size);
+		//std::cout << "LineFitWrapper fit: " << "A.rows(): " << A.rows() << ", A.cols(): " << A.cols() << std::endl;
+		//for (int row = 0; row < input_seq_length; row++){
+		//	A(row, 0) = 1.0;
+		//	A(row, 1) = ((float)(input_seq_length - row - 1)) * dt;
+		//}
+		
+
 		// find b coeffs for each dim.
 		for (int dim = 0; dim < output_chn_size; dim++){
 			//Eigen::MatrixXXf b_col_temp = A_QR.solve(Y_full(all, dim));
 			//Eigen::MatrixXf Y = Y_full(Eigen::all, dim);
 			Eigen::VectorXf Y = Y_full(Eigen::all, dim);
-			std::cout << "Y.rows(): " << Y.rows() << ", Y.cols(): " << Y.cols() << std::endl;
-			std::cout << "A.rows(): " << A.rows() << ", A.cols(): " << A.cols() << std::endl;
-			std::cout << "vals are: " << A.fullPivHouseholderQr().solve(Y) << std::endl;
+			//std::cout << "Y.rows(): " << Y.rows() << ", Y.cols(): " << Y.cols() << std::endl;
+			//std::cout << "A.rows(): " << A.rows() << ", A.cols(): " << A.cols() << std::endl;
+			//std::cout << "vals are: " << A.fullPivHouseholderQr().solve(Y) << std::endl;
 			b_coeffs(Eigen::all, dim) = A.fullPivHouseholderQr().solve(Y);
 		}
 		timer_start = std::chrono::steady_clock::now();
@@ -346,18 +374,7 @@ class LineFitWrapper{
 	}; 
 
 	private:
-	json params;
-	std::string param_path;
-	int input_chn_size;
-	int output_chn_size;
-	int input_seq_length;
-	int output_seq_length;
-	int model_order;
-	float equilibrium_lead_time;
-	float dt;
-	std::chrono::time_point<std::chrono::steady_clock> timer_start;
-	Eigen::MatrixXf A;
-	Eigen::MatrixXf b_coeffs;
+	
 
 	
 };

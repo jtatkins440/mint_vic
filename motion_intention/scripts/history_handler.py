@@ -47,7 +47,7 @@ class HistoryHandler:
         self.pos_timer = time.time()
         self.vel_timer = time.time()
         self.acc_timer = time.time()
-        self.new_value_tol = 0.00001
+        self.new_value_tol = 0.1
 
     '''
     def callbackPose(self, msg):
@@ -90,9 +90,9 @@ class HistoryHandler:
             position_new[0,0] = msg.pose.position.x
             position_new[1,0] = msg.pose.position.z # technically kuka reaching tasks are in xz-plane
             diff = np.abs(self.position_current - position_new)
-            if (np.all(self.new_value_tol < (diff))): # check if new value is same as from old value, if so don't say it's been updated
-                self.position_current = position_new.copy()
-                self.position_updated = True
+            #if (np.all(self.new_value_tol < (diff))): # check if new value is same as from old value, if so don't say it's been updated
+            self.position_current = position_new.copy()
+            self.position_updated = True
         return
 
     def callbackTwist(self, msg):
@@ -101,9 +101,9 @@ class HistoryHandler:
             velocity_new[0,0] = msg.twist.linear.x
             velocity_new[1,0] = msg.twist.linear.z
             diff = np.abs(self.velocity_current - velocity_new)
-            if (np.all(self.new_value_tol < (diff))): # check if new value is same as from old value, if so don't say it's been updated
-                self.velocity_current = velocity_new.copy()
-                self.velocity_updated = True
+            #if (np.all(self.new_value_tol < (diff))): # check if new value is same as from old value, if so don't say it's been updated
+            self.velocity_current = velocity_new.copy()
+            self.velocity_updated = True
         return
 
     def callbackAcc(self, msg):
@@ -112,9 +112,9 @@ class HistoryHandler:
             acceleration_new[0,0] = msg.twist.linear.x
             acceleration_new[1,0] = msg.twist.linear.z
             diff = np.abs(self.acceleration_current - acceleration_new)
-            if (np.all(self.new_value_tol < (diff))): # check if new value is same as from old value, if so don't say it's been updated
-                self.acceleration_current = acceleration_new.copy()
-                self.acceleration_updated = True
+            #if (np.all(self.new_value_tol < (diff))): # check if new value is same as from old value, if so don't say it's been updated
+            self.acceleration_current = acceleration_new.copy()
+            self.acceleration_updated = True
         return
 
     @staticmethod
