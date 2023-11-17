@@ -10,7 +10,7 @@ import time
 from std_srvs.srv import SetBool, Trigger
 from std_msgs.msg import Float64MultiArray
 from enum import Enum
-from motion_intention.srv import SetInt
+from motion_intention.srv import *
 from trial_data_logger.srv import StartLogging, InitLogger
 
 
@@ -133,14 +133,15 @@ class Init_Trial(smach.State):
         subject_num = int(input("Enter the Subject's Number: "))
         print("Choose a fitting method:")
         print("1. MIntNet")
-        print("2. Circle Fitting")
-        print("3. Linear Fitting")
+        print("2. Linear Fitting")
+        print("3. Circle Fitting")
         method = int(input("Enter your choice (1/2/3): "))
 
-
+        methodmsg = SetIntRequest()
+        methodmsg.data = method - 1
         # Send the chosen method to the MIntNet node via a service
         try:
-            resp = self.fitting_service(method)
+            resp = self.fitting_service(methodmsg)
             if not resp.success:
                 rospy.logerr("Failed to set fitting method.")
         except rospy.ServiceException as e:
