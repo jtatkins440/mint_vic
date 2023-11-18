@@ -3,10 +3,11 @@
 import rospy
 import os
 import h5py
-from std_msgs.msg import JointState
+from sensor_msgs.msg import JointState
 from std_srvs.srv import Trigger
-from trial_data_logger.srv import InitLogger, StartLogging
+from trial_data_logger.srv import *
 from std_msgs.msg import Float64MultiArray
+from motion_intention.srv import *
 from geometry_msgs.msg import PoseStamped, WrenchStamped, TwistStamped
 
 
@@ -45,7 +46,7 @@ class TrialDataLogger:
             # Current Targets
             '/CurrentTargets': rospy.Subscriber('/CurrentTargets', Float64MultiArray, self.callback),
             # Trial Targets
-            '/TrialTargets': rospy.Subscriber('/TrialTargets', Float64MultiArray, self.callback)
+            '/TrialTargets': rospy.Subscriber('/TrialTargets', Float64MultiArray, self.callback),
             # Current Stiffness
             '/current_stiffness': rospy.Subscriber('/current_stiffness', Float64MultiArray, self.callback)
         }
@@ -55,9 +56,10 @@ class TrialDataLogger:
         self.data_group = None
 
     def handle_init_logger(self, req):
+        res = InitLoggerResponse()
         current_directory = os.path.dirname(os.path.abspath(__file__))
         data_directory = os.path.join(current_directory, 'DATA')
-        subject_directory = os.path.join(data_directory, f'Subject{req.subject_num}')
+        subject_directory = os.path.join(data_directory, f'Subject{req.data}')
         calibration_directory = os.path.join(subject_directory, 'Calibration')
         fitting_directory = os.path.join(subject_directory, 'Fitting')
         methods = ['MIntNet', 'CircleFitting', 'LinearFitting']
@@ -69,9 +71,13 @@ class TrialDataLogger:
                 os.makedirs(directory)
                 os.chmod(directory, 0o777)  # Set full permissions
 
-        return True
+        res.success = True
+        res.message = "Subject Directory created"
+
+        return res
 
     def handle_start_logging(self, req):
+        res = StartLoggingResponse()
         # Determine the directory based on trial type and method
         current_directory = os.path.dirname(os.path.abspath(__file__))
         if req.trial_type == "Calibration":
@@ -85,16 +91,25 @@ class TrialDataLogger:
         # Open the HDF5 file for logging
         self.file_handle = h5py.File(file_path, 'w')
         self.data_group = self.file_handle.create_group("TrialData")
-
-        return True
+        
+        res.success = True
+        res.message = "Started Logging Successfully"
+        return res
 
     def handle_stop_logging(self, req):
+        res = TriggerResponse()
         if self.file_handle:
             self.file_handle.close()
             self.file_handle = None
             self.data_group = None
+            res.message = "Stopped Logging Successfully"
+            res.success = True
 
-        return True
+        else:
+            res.success = False
+            res.message = "Could close current file"
+
+        return res
 
     def callback(self, msg):
         if self.data_group:
