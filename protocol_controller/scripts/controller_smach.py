@@ -3,6 +3,7 @@
 import rospy
 import smach
 import smach_ros
+import os
 import numpy as np
 from smach_ros import SimpleActionState
 from sensor_msgs.msg import JointState
@@ -11,7 +12,7 @@ from std_srvs.srv import SetBool, Trigger
 from std_msgs.msg import Float64MultiArray
 from enum import Enum
 from motion_intention.srv import *
-from trial_data_logger.srv import StartLogging, InitLogger
+from trial_data_logger.srv import *
 
 
 
@@ -148,12 +149,16 @@ class Init_Trial(smach.State):
             rospy.logerr("Service call failed: %s", e)
 
         # Communicate with the TrialDataLogger node to initialize with the subject number
+        #subjectmsg = InitLogger()
+        #subjectmsg.data = int(subject_num)
         try:
             resp = self.init_logger_service(subject_num)
             if not resp.success:
                 rospy.logerr("Failed to initialize TrialDataLogger with subject number.")
+                print("Service call failed here")
         except rospy.ServiceException as e:
             rospy.logerr("Service Call Failed: %s", e)
+            print("No it failed here")
 
         userdata.subject_num = subject_num
         userdata.fitting_method = method
@@ -163,7 +168,7 @@ class Init_Trial(smach.State):
 
 class BaseTrialState(smach.State):
     def __init__(self):
-        smach.State.__init__(self, outcomes=['fitted'], input_keys=['subject_num', 'fitting_method'],
+        smach.State.__init__(self, outcomes=['fitted'], input_keys=['trial_type','subject_num', 'fitting_method'],
                              output_keys=['trial_type'])
         self.endEffector = np.array([[0.0], [0.0]])
         self.sub = rospy.Subscriber('/iiwa/ee_pose_custom', Float64MultiArray, self.end_effector_callback)
