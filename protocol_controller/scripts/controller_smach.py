@@ -352,47 +352,56 @@ class Fit_Trial_Block(BaseTrialState):
 
 def main():
     rospy.init_node('protocol_controller')
+    while not rospy.is_shutdown():
+        # Create a top-level state machine
+        sm_top = smach.StateMachine(outcomes=['success', 'failure'], input_keys=[], output_keys=[])
 
-    # Create a top-level state machine
-    sm_top = smach.StateMachine(outcomes=['success', 'failure'], input_keys=[], output_keys=[])
+        sm_top.userdata.fitting_method = 0
+        sm_top.userdata.subject_num = 0
 
-    sm_top.userdata.fitting_method = 0
-    sm_top.userdata.subject_num = 0
+        with sm_top:
+            smach.StateMachine.add('INITIAL_STATE', Initial_State(),
+                                transitions={'initialized': 'ORIGIN_HOLDING', 'failed': 'failure'})
 
-    with sm_top:
-        smach.StateMachine.add('INITIAL_STATE', Initial_State(),
-                               transitions={'initialized': 'ORIGIN_HOLDING', 'failed': 'failure'})
+            smach.StateMachine.add('ORIGIN_HOLDING', Origin_Holding(),
+                                transitions={'centered': 'TRIAL_SET', 'failed': 'failure'})
 
-        smach.StateMachine.add('ORIGIN_HOLDING', Origin_Holding(),
-                               transitions={'centered': 'TRIAL_SET', 'failed': 'failure'})
+            # Trial Set State Machine (Hierarchical)
+            sm_trial_set = smach.StateMachine(outcomes=['trial_complete', 'trial_failed'],
+                                            input_keys=['subject_num', 'fitting_method'], output_keys=['trial_type', 'subject_num', 'fitting_method'])
+            
+            with sm_trial_set:
+                smach.StateMachine.add('INIT_TRIAL', Init_Trial(), transitions={'initiated': 'CALIBRATION'})
+                smach.StateMachine.add('CALIBRATION', Calibration(),
+                                    transitions={'fitted': 'FIT_TRIAL_BLOCK'})
 
-        # Trial Set State Machine (Hierarchical)
-        sm_trial_set = smach.StateMachine(outcomes=['trial_complete', 'trial_failed'],
-                                          input_keys=['subject_num', 'fitting_method'], output_keys=['trial_type', 'subject_num', 'fitting_method'])
+                # Fit trial block can be chosen based on the method: 'circle_fitting', 'linear_fitting', 'neural_network'
+                smach.StateMachine.add('FIT_TRIAL_BLOCK', Fit_Trial_Block(),
+                                    transitions={'fitted': 'trial_complete'})
+
+            smach.StateMachine.add('TRIAL_SET', sm_trial_set,
+                                transitions={'trial_complete': 'success', 'trial_failed': 'failure'})
+
+        # Create and start the introspection server
+        sis = smach_ros.IntrospectionServer('server_name', sm_top, '/SM-ROOT')
+        sis.start()
+
+        # Execute the state machine
+        try:
+            outcome = sm_top.execute()
+        except rospy.ROSInterruptException:
+            pass
+        finally:
+            sis.stop()
+            rospy.signal_shutdown("State Machine execution completed or terminated")
+
+        # Wait for ctrl-c to stop the application
         
-        with sm_trial_set:
-            smach.StateMachine.add('INIT_TRIAL', Init_Trial(), transitions={'initiated': 'CALIBRATION'})
-            smach.StateMachine.add('CALIBRATION', Calibration(),
-                                   transitions={'fitted': 'FIT_TRIAL_BLOCK'})
-
-            # Fit trial block can be chosen based on the method: 'circle_fitting', 'linear_fitting', 'neural_network'
-            smach.StateMachine.add('FIT_TRIAL_BLOCK', Fit_Trial_Block(),
-                                   transitions={'fitted': 'trial_complete'})
-
-        smach.StateMachine.add('TRIAL_SET', sm_trial_set,
-                               transitions={'trial_complete': 'success', 'trial_failed': 'failure'})
-
-    # Create and start the introspection server
-    sis = smach_ros.IntrospectionServer('server_name', sm_top, '/SM-ROOT')
-    sis.start()
-
-    # Execute the state machine
-    outcome = sm_top.execute()
-
-    # Wait for ctrl-c to stop the application
-    rospy.spin()
-    sis.stop()
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except rospy.ROSInterruptException:
+        pass
+
