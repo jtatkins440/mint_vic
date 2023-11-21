@@ -171,7 +171,7 @@ class BaseTrialState(smach.State):
         smach.State.__init__(self, outcomes=['fitted'], input_keys=['trial_type','subject_num', 'fitting_method'],
                              output_keys=['trial_type'])
         self.endEffector = np.array([[0.0], [0.0]])
-        self.sub = rospy.Subscriber('/iiwa/ee_pose_custom', Float64MultiArray, self.end_effector_callback)
+        self.sub = rospy.Subscriber('/iiwa/j6_pose_custom', Float64MultiArray, self.end_effector_callback)
         self.target_pub = rospy.Publisher('CurrentTargets', Float64MultiArray, queue_size=10)
         self.prev_target_pub = rospy.Publisher('PreviousTargets', Float64MultiArray, queue_size=10)
         self.trial_targets_pub = rospy.Publisher('TrialTargets', Float64MultiArray, queue_size=10)
@@ -179,6 +179,7 @@ class BaseTrialState(smach.State):
         self.stop_logger_service = rospy.ServiceProxy('stop_logging', Trigger)
         self.controller_toggle_srv = rospy.ServiceProxy('/admit/set_admittance_controller_behavior', SetInt)
         self.ik_toggle_orientation_srv = rospy.ServiceProxy('/ik/toggle_ignore_orientation', SetBool)
+        self.initial_pose = np.array([0.0,-0.4231, 0.7589])
 
     def ik_toggle_orientation(self, val):
         try:
@@ -191,12 +192,15 @@ class BaseTrialState(smach.State):
 
     # Does the callback need alteration?
     def end_effector_callback(self, msg):
-        self.endEffector[0][0] = msg.data[0]
-        self.endEffector[1][0] = msg.data[1]
+        current_pose_msg = msg.data
+        abs_pose = np.array([current_pose_msg[0], current_pose_msg[1], current_pose_msg[2]]) - self.initial_pose
+        self.endEffector[0][0] = abs_pose[2]
+        self.endEffector[1][0] = -abs_pose[0]
 
     def is_close_enough(self, coord1, coord2):
-        radius_enough = 0.013
+        radius_enough = 0.025
         distance = np.linalg.norm(coord1 - coord2)
+        print(distance)
         return distance <= radius_enough
 
     def start_logging(self, subject_num, trial, method=None, trial_type=None):
@@ -253,6 +257,7 @@ class BaseTrialState(smach.State):
             self.start_logging(userdata.subject_num, trial, userdata.fitting_method, trial_type)
 
             while not self.is_close_enough(self.endEffector, targetXY):
+                print(f"EE Pose: {self.endEffector} and the Target: {targetXY}")
                 print("User trying to reach origin")
                 target_msg = Float64MultiArray()
                 target_msg.data = [targetXY[0][0], targetXY[1][0]]
@@ -299,7 +304,7 @@ class BaseTrialState(smach.State):
             # self.start_logging(userdata.subject_num, trial, userdata.fitting_method, trial_type)
 
             for target_count, target in enumerate(targets):
-                print("Target No. f{target_count} out of 6")
+                print(f"Target No. {target_count} out of 6")
                 targetXYold = targetXY
                 targetXY = target.reshape(2, 1)
 
@@ -313,7 +318,7 @@ class BaseTrialState(smach.State):
                 self.prev_target_pub.publish(prev_target_msg)
 
                 while not self.is_close_enough(self.endEffector, targetXY):
-                    print("User trying to reach target no. f{target_count}")
+                    print(f"User trying to reach target no. {target_count}")
                     target_msg = Float64MultiArray()
                     target_msg.data = [targetXY[0][0], targetXY[1][0]]
                     self.target_pub.publish(target_msg)
@@ -353,7 +358,7 @@ class Calibration(BaseTrialState):
         # Once trials are completed, toggle MIntNet Node back on
         # self.toggle_mintnet(True)
 
-        return 'calibrated'
+        return 'fitted'
 
 
 class Fit_Trial_Block(BaseTrialState):
