@@ -60,7 +60,7 @@ class Origin_Holding(smach.State):
         rospy.loginfo("Current Joint Angles: {}".format(self.current_joint_angles))
         total_duration = 5.0
         max_velocity = self.calculate_max_velocity(self.current_joint_angles, self.origin_joint_angles, total_duration)
-        velocity_threshold = 0.1
+        velocity_threshold = 0.25
         while max_velocity > velocity_threshold:
             total_duration += 1
             max_velocity = self.calculate_max_velocity(self.current_joint_angles, self.origin_joint_angles, total_duration)
@@ -217,7 +217,7 @@ class BaseTrialState(smach.State):
 
     def execute(self, userdata):
         # Load target data from csv file
-        self.ik_toggle_orientation(True)
+        self.ik_toggle_orientation(True)    
         trial_type = userdata.trial_type
         current_directory = os.path.dirname(os.path.realpath(__file__))
         csv_path = os.path.join(current_directory, '..', 'include', 'targets.csv')
@@ -241,6 +241,7 @@ class BaseTrialState(smach.State):
 
         for trial in range(total_trials):
             # User centers the robot to origin
+            print("targetXY initialized to origin")
             targetXY = origin_target
 
             # Publishing current targets
@@ -248,7 +249,14 @@ class BaseTrialState(smach.State):
             target_msg.data = [targetXY[0][0], targetXY[1][0]]
             self.target_pub.publish(target_msg)
 
+            # Temp start logging call:
+            self.start_logging(userdata.subject_num, trial, userdata.fitting_method, trial_type)
+
             while not self.is_close_enough(self.endEffector, targetXY):
+                print("User trying to reach origin")
+                target_msg = Float64MultiArray()
+                target_msg.data = [targetXY[0][0], targetXY[1][0]]
+                self.target_pub.publish(target_msg)
                 time.sleep(0.001)
 
             # Publishing previous targets
@@ -257,6 +265,7 @@ class BaseTrialState(smach.State):
             self.prev_target_pub.publish(prev_target_msg)
 
             # Move to sanity check target
+            print("TargetXY updated to sanity targets")
             targetXY = sanity_target
             targetXYold = origin_target
 
@@ -270,6 +279,10 @@ class BaseTrialState(smach.State):
             self.prev_target_pub.publish(prev_target_msg)
 
             while not self.is_close_enough(self.endEffector, targetXY):
+                print("User trying to reach sanity target")
+                target_msg = Float64MultiArray()
+                target_msg.data = [targetXY[0][0], targetXY[1][0]]
+                self.target_pub.publish(target_msg)
                 time.sleep(0.001)
 
             targetXYold = sanity_target
@@ -283,9 +296,10 @@ class BaseTrialState(smach.State):
             self.trial_targets_pub.publish(trial_targets_msg)
 
             # Trigger Trial Data Logger
-            self.start_logging(userdata.subject_num, trial, userdata.fitting_method, trial_type)
+            # self.start_logging(userdata.subject_num, trial, userdata.fitting_method, trial_type)
 
             for target_count, target in enumerate(targets):
+                print("Target No. f{target_count} out of 6")
                 targetXYold = targetXY
                 targetXY = target.reshape(2, 1)
 
@@ -299,6 +313,10 @@ class BaseTrialState(smach.State):
                 self.prev_target_pub.publish(prev_target_msg)
 
                 while not self.is_close_enough(self.endEffector, targetXY):
+                    print("User trying to reach target no. f{target_count}")
+                    target_msg = Float64MultiArray()
+                    target_msg.data = [targetXY[0][0], targetXY[1][0]]
+                    self.target_pub.publish(target_msg)
                     time.sleep(0.001)
 
             # Wait for 5 seconds before the next trial
