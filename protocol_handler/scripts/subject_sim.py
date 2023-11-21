@@ -24,10 +24,11 @@ class SubjectSimPublisher:
 
 		self.fk_sub = rospy.Subscriber("/iiwa/j6_pose_custom", Float64MultiArray, self.updateCurrentPose)
 		self.target_sub = rospy.Subscriber("/CurrentTargets", Float64MultiArray, self.updateCurrentTarget)
-		self.current_pose_msg = np.array([0.0, -0.4231, 0.7589, 0.0, 0.0, 0.0]) #PoseStamped()
-		self.current_target_msg = np.array([0.0, -0.423]) #Float64MultiArray()
+		self.initial_pose = np.array([0.0, -0.4231, 0.7589])
+		self.current_pose_msg = np.array([0.0, 0.0, 0.0])  #np.array([0.0, -0.4231, 0.7589, 0.0, 0.0, 0.0]) #PoseStamped()
+		self.current_target_msg = np.array([0.0, 0.0]) #Float64MultiArray()
 
-		self.origin_position = np.array([0.0, -0.4231, 0.7589])
+		self.origin_position = np.array([0.0, 0.0, 0.0]) #np.array([0.0, -0.4231, 0.7589])
 		self.circle_radius = 0.05
 		self.point_to_point_time = 4.0 # do point to point motions in this amount of time
 		self.circle_loop_times = [4.0, 2.0] # in seconds
@@ -59,9 +60,16 @@ class SubjectSimPublisher:
 		self.current_pose_msg = data.data
 		return
 
+	#def updateCurrentPose(self, data):
+	#	self.current_pose_msg = [data.pose.position.x, data.pose.position.y, data.pose.position.z]
+	#	return
+
+	# it's inefficient to make a new array every call. change when there's more time.
 	def getCurrentPosition(self, as_array = False):
 		if (as_array):
-			return np.array([self.current_pose_msg[0], self.current_pose_msg[1], self.current_pose_msg[2]])
+			abs_pose = np.array([self.current_pose_msg[0], self.current_pose_msg[1], self.current_pose_msg[2]]) - self.initial_pose
+			rel_pose = np.array([abs_pose[2], abs_pose[1], -abs_pose[0]])
+			return rel_pose #np.array([self.current_pose_msg[0], self.current_pose_msg[1], self.current_pose_msg[2]]) - self.initial_pose
 		else:
 			return [self.current_pose_msg[0], self.current_pose_msg[1], self.current_pose_msg[2]]
 
@@ -87,8 +95,10 @@ class SubjectSimPublisher:
 
 	def publish_handler(self, force):
 		self.msg = self.top_type()
-		self.msg.wrench.force.x = force[0]
-		self.msg.wrench.force.z = force[2]
+		self.msg.wrench.force.x = force[2]
+		self.msg.wrench.force.z = force[0]
+		#self.msg.wrench.force.x = force[0]
+		#self.msg.wrench.force.z = force[2]
 		self.msg.header.stamp = rospy.Time.now()
 		self.pub.publish(self.msg)
 		#rospy.loginfo("Published from subject_sim.py!")
