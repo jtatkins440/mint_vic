@@ -39,9 +39,9 @@ class SubjectSimPublisher:
 		self.hold_idx_count = int(self.hold_time / self.dt)
 
 		# control gains
-		self.P_gain = 10.0
-		self.D_gain = 0.1
-		self.I_gain = 0.01
+		self.P_gain = 20.0
+		self.D_gain = 1.0
+		self.I_gain = 0.5
 
 		self.error_vec = np.zeros_like(self.origin_position)
 		self.error_integral_vec = np.zeros_like(self.origin_position)
