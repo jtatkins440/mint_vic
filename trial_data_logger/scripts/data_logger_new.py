@@ -62,11 +62,18 @@ class TrialDataLogger:
         subject_directory = os.path.join(data_directory, f'Subject{req.data}')
         calibration_directory = os.path.join(subject_directory, 'Calibration')
         fitting_directory = os.path.join(subject_directory, 'Fitting')
-        methods = ['MIntNet', 'CircleFitting', 'LinearFitting']
+        methods = ['MIntNet', 'LinearFitting', 'CircleFitting']
 
         # Create directories if they don't exist
         for directory in [data_directory, subject_directory, calibration_directory, fitting_directory] + [
             os.path.join(fitting_directory, method) for method in methods]:
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+                os.chmod(directory, 0o777)  # Set full permissions
+
+        # Create directories if they don't exist
+        for directory in [data_directory, subject_directory, calibration_directory, fitting_directory] + [
+            os.path.join(calibration_directory, method) for method in methods]:
             if not os.path.exists(directory):
                 os.makedirs(directory)
                 os.chmod(directory, 0o777)  # Set full permissions
@@ -80,11 +87,12 @@ class TrialDataLogger:
         res = StartLoggingResponse()
         # Determine the directory based on trial type and method
         current_directory = os.path.dirname(os.path.abspath(__file__))
+        methods = ['MIntNet', 'LinearFitting', 'CircleFitting']
         if req.trial_type == "Calibration":
             file_path = os.path.join(current_directory, 'DATA', f'Subject{req.subject_num}', 'Calibration',
+                                     methods[req.method-1],
                                      f'data{req.trial_num}.h5')
         else:
-            methods = ['MIntNet', 'CircleFitting', 'LinearFitting']
             file_path = os.path.join(current_directory, 'DATA', f'Subject{req.subject_num}', 'Fitting',
                                      methods[req.method - 1], f'data{req.trial_num}.h5')
 
