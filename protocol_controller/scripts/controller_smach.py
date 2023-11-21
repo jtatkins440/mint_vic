@@ -178,6 +178,16 @@ class BaseTrialState(smach.State):
         self.start_logger_service = rospy.ServiceProxy('start_logging', StartLogging)
         self.stop_logger_service = rospy.ServiceProxy('stop_logging', Trigger)
         self.controller_toggle_srv = rospy.ServiceProxy('/admit/set_admittance_controller_behavior', SetInt)
+        self.ik_toggle_orientation_srv = rospy.ServiceProxy('/ik/toggle_ignore_orientation', SetBool)
+
+    def ik_toggle_orientation(self, val):
+        try:
+            resp = self.ik_toggle_orientation_srv(val)
+            if not resp.success:
+                rospy.logerr("Failed to toggle ik to ignore orientation!!")
+        except rospy.ServiceException as e:
+            rospy.logerr("Service call failed: %s", e)
+    
 
     # Does the callback need alteration?
     def end_effector_callback(self, msg):
@@ -207,6 +217,7 @@ class BaseTrialState(smach.State):
 
     def execute(self, userdata):
         # Load target data from csv file
+        self.ik_toggle_orientation(True)
         trial_type = userdata.trial_type
         current_directory = os.path.dirname(os.path.realpath(__file__))
         csv_path = os.path.join(current_directory, '..', 'include', 'targets.csv')
