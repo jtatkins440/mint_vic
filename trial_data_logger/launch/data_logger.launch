@@ -1,4 +1,4 @@
 <launch>
     <!-- Start the controller_smach script from the protocol_controller package -->
-    <node name="protocol_controller_node" pkg="protocol_controller" type="controller_smach.py"/>
+    <node name="trial_data_logger_node" pkg="trial_data_logger" type="data_logger_new.py"/>
 </launch>
