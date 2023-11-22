@@ -96,7 +96,7 @@ class SubjectSimPublisher:
 	def publish_handler(self, force):
 		self.msg = self.top_type()
 		self.msg.wrench.force.x = force[2]
-		self.msg.wrench.force.z = force[0]
+		self.msg.wrench.force.y = force[0] # this indexing is intentional and basically converts the frame to be relative to the force sensor and not the base frame
 		#self.msg.wrench.force.x = force[0]
 		#self.msg.wrench.force.z = force[2]
 		self.msg.header.stamp = rospy.Time.now()
