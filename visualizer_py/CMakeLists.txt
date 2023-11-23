@@ -10,6 +10,7 @@ project(visualizer_py)
 find_package(catkin REQUIRED COMPONENTS
   rospy
   std_msgs
+  message_generation
 )
 
 ## System dependencies are found with CMake's conventions
@@ -56,7 +57,6 @@ find_package(catkin REQUIRED COMPONENTS
  add_service_files(
    FILES
    UpdateTargets.srv
-   UpdateTargetsResponse.srv
  )
 
 ## Generate actions in the 'action' folder
@@ -103,8 +103,8 @@ find_package(catkin REQUIRED COMPONENTS
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
 #  INCLUDE_DIRS include
-#  LIBRARIES visualizer_py
-#  CATKIN_DEPENDS rospy std_msgs
+  LIBRARIES visualizer_py
+  CATKIN_DEPENDS rospy std_msgs
 #  DEPENDS system_lib
 )
 
