@@ -13,7 +13,7 @@ from std_msgs.msg import Float64MultiArray
 from enum import Enum
 from motion_intention.srv import *
 from trial_data_logger.srv import *
-
+from visualizer_py.srv import *
 
 
 # Define the individual states
