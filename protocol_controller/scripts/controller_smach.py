@@ -189,6 +189,14 @@ class BaseTrialState(smach.State):
         except rospy.ServiceException as e:
             rospy.logerr("Service call failed: %s", e)
     
+    def send_target_update(self, x, y):
+        rospy.wait_for_service('update_targets')
+        try:
+            update_targets = rospy.ServiceProxy('update_targets', UpdateTargets)
+            resp = update_targets(x, y)
+            return resp.success
+        except rospy.ServiceException as e:
+            print("Service call failed: %s" % e)
 
     # Does the callback need alteration?
     def end_effector_callback(self, msg):
@@ -244,6 +252,14 @@ class BaseTrialState(smach.State):
         sanity_target = np.array([[0.1], [0.0]])
 
         for trial in range(total_trials):
+            # Start the trial
+            targets = pathmap[trial + 1]
+
+            target_x_gui = targets[:, 0]
+            target_y_gui = targets[:, 1]
+            resp_gui = self.send_target_update(target_x_gui, target_y_gui)
+            if resp_gui.success:
+                print("Trial Targets sent successfully")
             # User centers the robot to origin
             print("targetXY initialized to origin")
             targetXY = origin_target
@@ -254,10 +270,10 @@ class BaseTrialState(smach.State):
             self.target_pub.publish(target_msg)
 
             # Temp start logging call:
-            self.start_logging(userdata.subject_num, trial, userdata.fitting_method, trial_type)
+            # self.start_logging(userdata.subject_num, trial, userdata.fitting_method, trial_type)
 
             while not self.is_close_enough(self.endEffector, targetXY):
-                print(f"EE Pose: {self.endEffector} and the Target: {targetXY}")
+                # print(f"EE Pose: {self.endEffector} and the Target: {targetXY}")
                 print("User trying to reach origin")
                 target_msg = Float64MultiArray()
                 target_msg.data = [targetXY[0][0], targetXY[1][0]]
@@ -292,16 +308,16 @@ class BaseTrialState(smach.State):
 
             targetXYold = sanity_target
             # Start the trial
-            targets = pathmap[trial + 1]
+            # targets = pathmap[trial + 1]
 
             # Publish targets for GUI
-            trial_targets_msg = Float64MultiArray()
-            for target in targets:
-                trial_targets_msg.data.extend(target)
-            self.trial_targets_pub.publish(trial_targets_msg)
+            # trial_targets_msg = Float64MultiArray()
+            # for target in targets:
+            #     trial_targets_msg.data.extend(target)
+            # self.trial_targets_pub.publish(trial_targets_msg)
 
             # Trigger Trial Data Logger
-            # self.start_logging(userdata.subject_num, trial, userdata.fitting_method, trial_type)
+            self.start_logging(userdata.subject_num, trial, userdata.fitting_method, trial_type)
 
             for target_count, target in enumerate(targets):
                 print(f"Target No. {target_count} out of 6")
