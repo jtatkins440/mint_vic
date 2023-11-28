@@ -16,6 +16,7 @@ from trial_data_logger.srv import *
 from visualizer_py.srv import *
 
 
+
 # Define the individual states
 class Initial_State(smach.State):
     def __init__(self):
@@ -175,11 +176,29 @@ class BaseTrialState(smach.State):
         self.target_pub = rospy.Publisher('CurrentTargets', Float64MultiArray, queue_size=10)
         self.prev_target_pub = rospy.Publisher('PreviousTargets', Float64MultiArray, queue_size=10)
         self.trial_targets_pub = rospy.Publisher('TrialTargets', Float64MultiArray, queue_size=10)
+        self.force_offset = rospy.ServiceProxy('/admit/set_force_offset', Trigger)
         self.start_logger_service = rospy.ServiceProxy('start_logging', StartLogging)
         self.stop_logger_service = rospy.ServiceProxy('stop_logging', Trigger)
         self.controller_toggle_srv = rospy.ServiceProxy('/admit/set_admittance_controller_behavior', SetInt)
         self.ik_toggle_orientation_srv = rospy.ServiceProxy('/ik/toggle_ignore_orientation', SetBool)
+        self.ik_set_behavior_srv = rospy.ServiceProxy('/ik/set_ik_behavior', SetInt)
         self.initial_pose = np.array([0.0,-0.4231, 0.7589])
+
+    def set_ik_behavior(self, val):
+        try:
+            resp = self.ik_set_behavior_srv(val)
+            if not resp.success:
+                rospy.logerr("Failed to set IK Behavior")
+        except:
+            rospy.logerr("Service call to IK set Behvaior Failed !!")
+
+    def force_offset_service(self):
+        try:
+            resp = self.force_offset()
+            if not resp.success:
+                rospy.logerr("Falied to trigger Force Offset Service!!")
+        except rospy.ServiceException as e:
+            rospy.logerr("Service call to Force Offset Failed !! %s", e)
 
     def ik_toggle_orientation(self, val):
         try:
@@ -194,7 +213,7 @@ class BaseTrialState(smach.State):
         try:
             update_targets = rospy.ServiceProxy('update_targets', UpdateTargets)
             resp = update_targets(x, y)
-            return resp.success
+            return resp
         except rospy.ServiceException as e:
             print("Service call failed: %s" % e)
 
@@ -203,7 +222,7 @@ class BaseTrialState(smach.State):
         current_pose_msg = msg.data
         abs_pose = np.array([current_pose_msg[0], current_pose_msg[1], current_pose_msg[2]]) - self.initial_pose
         self.endEffector[0][0] = abs_pose[2]
-        self.endEffector[1][0] = -abs_pose[0]
+        self.endEffector[1][0] = abs_pose[0]
 
     def is_close_enough(self, coord1, coord2):
         radius_enough = 0.025
@@ -229,7 +248,11 @@ class BaseTrialState(smach.State):
 
     def execute(self, userdata):
         # Load target data from csv file
-        self.ik_toggle_orientation(True)    
+        self.ik_toggle_orientation(True)
+        # Set IK to Open Loop
+        self.ik_set_behavior_srv(1)
+        #Trigger Force offset Service 
+        self.force_offset_service()    
         trial_type = userdata.trial_type
         current_directory = os.path.dirname(os.path.realpath(__file__))
         csv_path = os.path.join(current_directory, '..', 'include', 'targets.csv')
@@ -251,20 +274,38 @@ class BaseTrialState(smach.State):
         origin_target = np.array([[0.0], [0.0]])
         sanity_target = np.array([[0.1], [0.0]])
 
-        for trial in range(total_trials):
+        for trial in range(3):
             # Start the trial
             targets = pathmap[trial + 1]
 
             target_x_gui = targets[:, 0]
             target_y_gui = targets[:, 1]
+            #start_gui_service_time = time.time()
+            #timeout = 5
             resp_gui = self.send_target_update(target_x_gui, target_y_gui)
             if resp_gui.success:
-                print("Trial Targets sent successfully")
+                print("Trial Number sent to Visualizer")
+
+            
+            '''
+            while True:
+                resp_gui = self.send_target_update(trial)
+                if resp_gui.success:
+                    print("Trial Targets sent successfully")
+                    break
+                else:
+                    elapse_time = time.time() - start_gui_service_time
+                    if elapsed_time >= timeout:
+                        print("Couldn't send targets")
+                        break
+                    time.sleep(0.01)
+            '''
+
             # User centers the robot to origin
             print("targetXY initialized to origin")
             targetXY = origin_target
 
-            # Publishing current targets
+            # Publishing current targets -- temp -- change it
             target_msg = Float64MultiArray()
             target_msg.data = [targetXY[0][0], targetXY[1][0]]
             self.target_pub.publish(target_msg)
@@ -367,9 +408,9 @@ class Calibration(BaseTrialState):
     def execute(self, userdata):
         # Toggle MIntNet Node off
         # self.toggle_mintnet(False)
-        userdata.trial_type = 'Calibration'
-        self.set_controller_behaviour(1)
-        super(Calibration, self).execute(userdata)
+        # userdata.trial_type = 'Calibration'
+        # self.set_controller_behaviour(1)
+        # super(Calibration, self).execute(userdata)
 
         # Once trials are completed, toggle MIntNet Node back on
         # self.toggle_mintnet(True)
