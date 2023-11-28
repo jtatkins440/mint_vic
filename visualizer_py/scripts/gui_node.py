@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import rospy
+import os
 import numpy as np
 from std_msgs.msg import Float64MultiArray
 import matplotlib.pyplot as plt
@@ -11,8 +12,24 @@ from geometry_msgs.msg import PoseStamped
 targetXYold = np.zeros(2)
 targetXY = np.zeros(2)
 endEffectorXY = np.array([[0.0], [0.0]])
-targets = np.zeros((6, 2))
+# targets = np.zeros((6, 2))
 initial_pose = np.array([0.0,-0.4231, 0.7589])
+
+current_directory = os.path.dirname(os.path.realpath(__file__))
+csv_path = os.path.join(current_directory, '..', 'include', 'targets.csv')
+data = np.loadtxt(csv_path, delimiter=",")
+
+# Waypoints
+targetx_data = data[:, 0] * 0.01
+targety_data = data[:, 1] * 0.01
+
+pathmap = {}
+
+for i in range(0, targetx_data.size, 6):
+    path_num = (i // 6) + 1
+    pathmap[path_num] = np.column_stack((targetx_data[i:i + 6], targety_data[i:i + 6]))
+
+targets = pathmap[1]
 
 
 def targetXYold_callback(msg):
@@ -38,6 +55,9 @@ def targets_callback(msg):
 def update_targets(req):
     global targets
     targets = np.column_stack((req.x, req.y))
+    is_zero = np.all(targets == np.zeros((6, 2)))
+    #if is_zero:
+    #    return UpdateTargetsResponse(success=False)
     return UpdateTargetsResponse(success=True)
 
 
@@ -46,7 +66,7 @@ def visualize():
     plt.xlim(-0.18, 0.18)
     plt.ylim(-0.18, 0.18)
 
-    # print(f"Targets received are: {targets}")
+    print(f"Targets received are: {targets}")
     print(f"End Effector Pose: {endEffectorXY}")
 
     # Draw targets
@@ -58,7 +78,7 @@ def visualize():
 
     # Draw end effector
     plt.scatter(endEffectorXY[0][0], endEffectorXY[1][0], s=50, c='red')
-
+    
     # Prepare and evaluate the spline
     if len(targets) > 1:
         tck, u = interpolate.splprep([targets[:,0], targets[:,1]], s=0)
@@ -72,14 +92,13 @@ def visualize():
 
 def main():
     rospy.init_node('visualizer_py')
-
+    service = rospy.Service('update_targets', UpdateTargets, update_targets)
     rospy.Subscriber('/PreviousTargets', Float64MultiArray, targetXYold_callback)
     rospy.Subscriber('/CurrentTargets', Float64MultiArray, targetXY_callback)
     rospy.Subscriber('/iiwa/ee_pose', PoseStamped, endEffectorXY_callback)
     # rospy.Subscriber('/iiwa/j6_pose_custom', Float64MultiArray, endEffectorXY_callback) # --> For simulation
     # rospy.Subscriber('/TrialTargets', Float64MultiArray, targets_callback)
     # Initialize the service
-    service = rospy.Service('update_targets', UpdateTargets, update_targets)
 
     rangex_ = -0.18
     rangex = 0.18
