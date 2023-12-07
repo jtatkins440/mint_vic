@@ -20,7 +20,7 @@ class MIntNodeWrapper{
 	public:
 
 		MIntNodeWrapper(){
-			ros::NodeHandle nh("mint");
+			ros::NodeHandle nh("intention_predictor");
 			//nh.getParam
 			
 			//sub = nh.subscribe("/ee_pose", 2, &MIntNodeWrapper::subscriberCallback, this); // assumes it's reading a task_space PoseStamped message
@@ -28,14 +28,14 @@ class MIntNodeWrapper{
 			pub = nh.advertise<geometry_msgs::PoseStamped>("/ee_pose_eq", 2);
 
 			
-			if (ros::param::get("/mint/model_weights_path", model_weights_path)) {
+			if (nh.getParam("model_weights_path", model_weights_path)) {
 				std::cout << "Recieved model_weights_path as " << model_weights_path << std::endl;
 			}
 			else {
 				ROS_INFO("!!!No model_weights_path in motion_intention_node!!!");
 			};
 
-			if (ros::param::get("/mint/hparam_json_path", hyperparam_weights_path)) {
+			if (nh.getParam("hparam_json_path", hyperparam_weights_path)) {
 				std::cout << "Recieved hyperparam_weights_path as " << hyperparam_weights_path << std::endl;
 			}
 			else {
@@ -49,14 +49,15 @@ class MIntNodeWrapper{
 			mint_line = LineFitWrapper(hyperparam_weights_path);
     		mint_circ = CircleFitWrapper(hyperparam_weights_path);
 
-			ros::param::param<double>("/mint/sample_time", sample_time, 0.005);
-			ros::param::param<double>("/mint/allowable_time", allowable_time_tolerance, 0.0005);
-			ros::param::param<int>("/mint/inference_rate", inference_rate, 500);
-			ros::param::param<int>("/mint/pose_deque_min_size", pose_deque_min_size, 3);
-			ros::param::param<int>("/mint/state_dim", state_dim, 2);
-			ros::param::param<int>("/mint/seq_length", seq_length, 125);
-			ros::param::param<int>("/mint/mint_state_dim", mint_state_dim, 4);
-			ros::param::param<int>("/mint/cfit_state_dim", cfit_state_dim, 2);
+			nh.param<double>("sample_time", sample_time, 0.005);
+			nh.param<double>("allowable_time", allowable_time_tolerance, 0.0005);
+			nh.param<int>("inference_rate", inference_rate, 500);
+			nh.param<int>("pose_deque_min_size", pose_deque_min_size, 3);
+			nh.param<int>("state_dim", state_dim, 2);
+			nh.param<int>("seq_length", seq_length, 125);
+			nh.param<int>("mint_state_dim", mint_state_dim, 4);
+			nh.param<int>("cfit_state_dim", cfit_state_dim, 2);
+
 			input_deque_seq_length = mintnet.input_seq_length;
 			time_start = std::chrono::steady_clock::now();
 
@@ -333,20 +334,6 @@ void MIntNodeWrapper::mainLoop() {
 			pose_s.header.stamp = ros::Time::now();
 			//std::cout << "Got new eq_pose! It's: "<< eq_pose << std::endl;
 
-			/*
-			geometry_msgs::TransformStamped transformStamped;
-			transformStamped.header.frame_id = "world";
-			transformStamped.child_frame_id = "ee_eq";
-			transformStamped.header.stamp = ros::Time::now();
-			transformStamped.transform.rotation.x = 0.0;
-			transformStamped.transform.rotation.y = 0.0;
-			transformStamped.transform.rotation.z = 0.0;
-			transformStamped.transform.rotation.w = 1.0;
-
-			transformStamped.header.stamp = ros::Time::now();
-			transformStamped.transform.translation.x = eq_pose(0);
-			transformStamped.transform.translation.z = eq_pose(1);
-			*/
 		}
 		//ROS_INFO("MInt: before publishing pose_s:");
 		pub.publish(pose_s);
@@ -361,10 +348,7 @@ void MIntNodeWrapper::mainLoop() {
 int main(int argc, char **argv){
 	ros::init(argc, argv, "motion_intent");
 	MIntNodeWrapper minty;
-	//minty.startDequeHandler();
-	//std::cout << "DequeHandler started!" << std::endl;
-	//std::thread dequeHandlerThread (&MIntNodeWrapper::dequeHandler, this); 
-	//std::thread deque_handler_thread(&MIntNodeWrapper::dequeHandler, minty);
+
 	minty.mainLoop();
 	//deque_handler_thread.join();
 }

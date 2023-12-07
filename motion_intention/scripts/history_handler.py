@@ -18,9 +18,9 @@ class HistoryHandler:
     def __init__(self):
         self.nh = rospy.init_node('history_handler', anonymous=True)
 
-        self.state_dim_ = rospy.get_param("/mint/state_dim", 2)
-        self.seq_length_ = rospy.get_param("/mint/seq_length", 125)
-        self.history_rate = rospy.get_param("/mint/history_rate", 200)
+        self.state_dim_ = rospy.get_param("/mint/intention_predictor/state_dim", 2) # using global because it's a param for multiple nodes
+        self.seq_length_ = rospy.get_param("/mint/intention_predictor/seq_length", 125)
+        self.history_rate = rospy.get_param("/mint/intention_predictor/history_rate", 200)
         self.history_dt = 1.0 / (self.history_rate)
         self.rate = rospy.Rate(self.history_rate)
 
@@ -48,6 +48,8 @@ class HistoryHandler:
         self.vel_timer = time.time()
         self.acc_timer = time.time()
         self.new_value_tol = 0.1
+<<<<<<< HEAD
+=======
 
     '''
     def callbackPose(self, msg):
@@ -83,6 +85,7 @@ class HistoryHandler:
             self.acc_timer = time.time()
         return
     '''
+>>>>>>> 076e169d382f406399979b1b01a1a35b94031da7
 
     def callbackPose(self, msg):
         position_new = self.position_current.copy()
@@ -147,22 +150,9 @@ class HistoryHandler:
                 self.istate_current[2:4,0] = self.velocity_current[0:2,0].copy()
                 self.istate_current[4:6,0] = self.acceleration_current[0:2,0].copy()
 
-
-                #print(f"position_current: {self.position_current}") #is streaming corectly
-                #print(f"velocity_current: {self.velocity_current}") #is streaming corectly
-                #print(f"acceleration_current: {self.acceleration_current}") #is streaming corectly
-                #print(f"istate: {self.istate_current}") #is streaming corectly
                 self.istate_deque.append(self.istate_current.copy())
-                #print(self.istate_deque) # is not updating correctly
-                
-
-                
-                #print(self.istate_current)
 
                 if (len(self.istate_deque) >= self.istate_deque.maxlen):
-                    #print(f"istate_deque, 1: {self.istate_deque[1]}")
-                    #print(f"istate_deque, -1: {self.istate_deque[-1]}")
-                    #print(f"istate_deque, 10: {self.istate_deque[50]}")
 
                     history_array = self.dequeToPubArray(self.istate_deque)
 
