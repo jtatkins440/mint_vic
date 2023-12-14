@@ -91,23 +91,30 @@ class TrialDataLogger:
     def handle_start_logging(self, req):
         res = StartLoggingResponse()
         # Determine the directory based on trial type and method
-        current_directory = os.path.dirname(os.path.abspath(__file__))
-        methods = ['MIntNet', 'LinearFitting', 'CircleFitting']
-        if req.trial_type == "Calibration":
-            file_path = os.path.join(current_directory, 'DATA', f'Subject{req.subject_num}', 'Calibration',
-                                     methods[req.method-1],
-                                     f'data{req.trial_num}.h5')
-        else:
-            file_path = os.path.join(current_directory, 'DATA', f'Subject{req.subject_num}', 'Fitting',
-                                     methods[req.method - 1], f'data{req.trial_num}.h5')
-
-        # Open the HDF5 file for logging
-        self.file_handle = h5py.File(file_path, 'w')
-        self.data_group = self.file_handle.create_group("TrialData")
-        
-        res.success = True
-        res.message = "Started Logging Successfully"
-        self.start_time = time.time()
+        try:
+            current_directory = os.path.dirname(os.path.abspath(__file__))
+            methods = ['MIntNet', 'LinearFitting', 'CircleFitting']
+            if req.trial_type == "Calibration":
+                file_path = os.path.join(current_directory, 'DATA', f'Subject{req.subject_num}', 'Calibration',
+                                         methods[req.method-1],
+                                         f'data{req.trial_num}.h5')
+            else:
+                file_path = os.path.join(current_directory, 'DATA', f'Subject{req.subject_num}', 'Fitting',
+                                         methods[req.method - 1], f'data{req.trial_num}.h5')
+    
+            # Open the HDF5 file for logging
+            self.file_handle = h5py.File(file_path, 'w')
+            self.data_group = self.file_handle.create_group("TrialData")
+            
+            res.success = True
+            res.message = "Started Logging Successfully"
+        except Exception as e:
+            res.success = False
+            res.message = f"Failed to start logging{e}"
+            rospy.logerr(f"handle_start_logging: {e}")
+        finally:
+            self.start_time = time.time() if res.success else None
+            
         return res
 
     def handle_stop_logging(self, req):
@@ -127,6 +134,9 @@ class TrialDataLogger:
         return res
 
     def callback(self, msg):
+        if self.data_group is None:
+            rospy.logawarn("Data Group is not initialized. Skipping message processing")
+            return
         
         if self.start_time is not None:
             elapsed_time = time.time() - self.start_time
@@ -164,8 +174,11 @@ class TrialDataLogger:
                         dataset[-1] = data_to_append
                     else:
                         # Create a new dataset
-                        self.data_group.create_dataset(dataset_name, data=[data_to_append],
-                                       maxshape=(None, len(data_to_append)))
+                        try:
+                            self.data_group.create_dataset(dataset_name, data=[data_to_append],
+                                           maxshape=(None, len(data_to_append)))
+                        except ValueError as ve:
+                            rospy.logerr(f"Failed to create dataset {dataset_name}: {ve}")
                 except KeyError as e:
                     rospy.logerr("Failed to access or create dataset: {}. Error: {}".format(dataset_name, e))
         else:
