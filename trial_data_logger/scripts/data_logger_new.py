@@ -176,7 +176,7 @@ class TrialDataLogger:
                         # Create a new dataset
                         try:
                             self.data_group.create_dataset(dataset_name, data=[data_to_append],
-                                           maxshape=(None, len(data_to_append)))
+                                           maxshape=(None, len(data_to_append)), chunks=True)
                         except ValueError as ve:
                             rospy.logerr(f"Failed to create dataset {dataset_name}: {ve}")
                 except KeyError as e:
