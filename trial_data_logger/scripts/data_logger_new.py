@@ -119,7 +119,7 @@ class TrialDataLogger:
 
     def handle_stop_logging(self, req):
         res = TriggerResponse()
-        if self.file_handle:
+        try:
             self.file_handle.close()
             self.file_handle = None
             self.data_group = None
@@ -127,7 +127,7 @@ class TrialDataLogger:
             res.message = "Stopped Logging Successfully"
             res.success = True
 
-        else:
+        except Exception as e:
             res.success = False
             res.message = "Could close current file"
 
