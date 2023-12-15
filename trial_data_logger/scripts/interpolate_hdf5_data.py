@@ -5,7 +5,7 @@ import os
 import glob
 
 
-def interpolate_hdf5_data(file_path, common_time_base='5ms'):
+def interpolate_hdf5_data(file_path, common_time_base='5ms', cutoff_frequency=0.1, order=4):
     with h5py.File(file_path, 'r') as file:
         datasets = list(file['TrialData'].keys())
         datasets_data = {}
@@ -19,7 +19,22 @@ def interpolate_hdf5_data(file_path, common_time_base='5ms'):
 
     interpolated_data = {}
     for dataset_name, df in datasets_data.items():
-        resampled_df = df.resample(common_time_base).mean()
+        # Calculate median dt
+        median_dt = np.median(np.diff(df.index.values)) / np.timedelta64(1, 's')
+
+        # Even out each signal
+        even_times = np.arange(df.index[0], df.index[-1], median_dt)
+        even_df = df.reindex(pd.to_datetime(even_times, unit='s'), method='nearest', limit=1)
+
+        # Create a low-pass Butterworth filter
+        sos = butter(order, cutoff_frequency, btype='low', fs=1/median_dt, output='sos')
+
+        # Apply the filter
+        filtered_data = np.array([filtfilt(sos, even_df[col]) for col in even_df.columns]).T
+        filtered_df = pd.DataFrame(filtered_data, index=even_df.index, columns=even_df.columns)
+
+        # Resample and interpolate
+        resampled_df = filtered_df.resample(common_time_base).mean()
         interpolated_df = resampled_df.interpolate(method='time')
         interpolated_data[dataset_name] = interpolated_df
 
@@ -27,7 +42,7 @@ def interpolate_hdf5_data(file_path, common_time_base='5ms'):
     with h5py.File(output_file, 'w') as file:
         for dataset_name, df in interpolated_data.items():
             data = df.to_numpy()
-            timestamps = df.index.astype(np.int64) // 10 ** 12
+            timestamps = df.index.astype(np.int64) // 10 ** 9
             data_with_time = np.column_stack((timestamps, data))
             file.create_dataset('TrialData/' + dataset_name, data=data_with_time)
 
