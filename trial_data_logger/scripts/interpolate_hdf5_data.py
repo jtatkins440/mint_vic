@@ -27,7 +27,7 @@ def interpolate_hdf5_data(file_path, common_time_base='5ms'):
     with h5py.File(output_file, 'w') as file:
         for dataset_name, df in interpolated_data.items():
             data = df.to_numpy()
-            timestamps = df.index.astype(np.int64) // 10 ** 9
+            timestamps = df.index.astype(np.int64) // 10 ** 12
             data_with_time = np.column_stack((timestamps, data))
             file.create_dataset('TrialData/' + dataset_name, data=data_with_time)
 
