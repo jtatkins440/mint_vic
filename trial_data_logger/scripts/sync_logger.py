@@ -18,6 +18,8 @@ class SyncDataLogger:
         self.file_handle = None
         self.data_group = None
         self.start_time = None
+        self.hz = 200.0
+        self.cycle_time = 1.0 / (1.0 * self.hz)
 
         rospy.Service('init_logger', InitLogger, self.handle_init_logger)
         rospy.Service('start_logging', StartLogging, self.handle_start_logging)
@@ -57,7 +59,7 @@ class SyncDataLogger:
 
             '/CurrentTargets': rospy.Subscriber('/CurrentTargets', Float64MultiArray, self.current_targets_callback),
 
-            '/iiwa/current_stiffness': rospy.Subscriber('/current_stiffness', Float64MultiArray, self.current_stiffness_callback)
+            '/iiwa/current_stiffness': rospy.Subscriber('/iiwa/current_stiffness', Float64MultiArray, self.current_stiffness_callback)
         }
 
     # Callbacks for each topic
@@ -174,12 +176,19 @@ class SyncDataLogger:
             res.message = f"Could close current file: {e}"
 
         return res
+    
+    def wait_for_time(self, start_time_point):
+        end_before_rest = time.time()
+        elapsed_time = end_before_rest - start_time_point
+
+        while elapsed_time < self.cycle_time:
+            elapsed_time = time.time() - start_time_point
 
     def sync_log(self):
-        if self.data_group is None:
-            rospy.logwarn("Data Group is not initialized. Skipping message processing")
+        # if self.data_group is None:
+            # rospy.logwarn("Data Group is not initialized. Skipping message processing")
 
-        elif self.start_time is not None:
+        if self.start_time is not None:
             elapsed_time = time.time() - self.start_time
             if self.data_group:
                 for index, topic_name in enumerate(self.subscribers.keys()):
@@ -223,14 +232,21 @@ class SyncDataLogger:
                                 rospy.logerr(f"Failed to create dataset {dataset_name}: {ve}")
                     except KeyError as e:
                         rospy.logerr("Failed to access or create dataset: {}. Error: {}".format(dataset_name, e))
+            else:
+                rospy.loginfo("Logging has not been initiated")
 
     def main(self):
         rospy.init_node('trial_data_logger')
-        rate = rospy.rate(200) # 200Hz
-
+        #rate = rospy.rate(200) # 200Hz
+        time_start = time.time()
+        self.wait_for_time(time_start)
+        self.dt = time.time() - time_start
         while not rospy.is_shutdown():
             self.sync_log()
-            rate.sleep()
+            #time.sleep(0.005)
+            self.wait_for_time(time_start)
+            self.dt = time.time() - time_start
+            time_start = time.time()
 
 
 if __name__ == '__main__':
