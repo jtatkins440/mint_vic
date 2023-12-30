@@ -365,7 +365,7 @@ class LineFitWrapper{
 	Eigen::ArrayXf getEquilibriumPoint(){
 		auto end = std::chrono::steady_clock::now();
 		std::chrono::duration<double> diff = end - timer_start;
-		double spline_eq_time = diff.count() + equilibrium_lead_time;
+		double spline_eq_time = -1.0 * (diff.count() + equilibrium_lead_time); // have to flip the direction to make it work as desired
 
 		Eigen::ArrayXf eq_point(output_chn_size);
 		eq_point << b_coeffs(0,0) + b_coeffs(1, 0) * spline_eq_time, b_coeffs(0,1) + b_coeffs(1, 1) * spline_eq_time;
