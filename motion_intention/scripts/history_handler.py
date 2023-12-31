@@ -48,44 +48,6 @@ class HistoryHandler:
         self.vel_timer = time.time()
         self.acc_timer = time.time()
         self.new_value_tol = 0.1
-<<<<<<< HEAD
-=======
-
-    '''
-    def callbackPose(self, msg):
-        time_diff = time.time() - self.pos_timer
-        position_new = self.position_current.copy()
-        if ((self.position_updated == False) and (self.history_dt < time_diff)):
-            position_new[0,0] = msg.pose.position.x
-            position_new[1,0] = msg.pose.position.y
-            diff = np.abs(self.position_current - position_new)
-            #print(position_new)
-            #print(f"diff: {diff}")
-            if (np.all(self.new_value_tol < (diff))): # check if new value is same as from old value, if so don't say it's been updated
-                self.position_current = position_new.copy()
-                self.position_updated = True
-            self.pos_timer = time.time()
-        return
-
-    def callbackTwist(self, msg):
-        time_diff = time.time() - self.vel_timer
-        if ((self.velocity_updated == False) and (self.history_dt < time_diff)):
-            self.velocity_current[0,0] = msg.twist.linear.x
-            self.velocity_current[1,0] = msg.twist.linear.y
-            self.velocity_updated = True
-            self.vel_timer = time.time()
-        return
-
-    def callbackAcc(self, msg):
-        time_diff = time.time() - self.acc_timer
-        if ((self.acceleration_updated == False) and (self.history_dt < time_diff)):
-            self.acceleration_current[0,0] = msg.twist.linear.x # is a twist message but it's holding acc info.
-            self.acceleration_current[1,0] = msg.twist.linear.y
-            self.acceleration_updated = True
-            self.acc_timer = time.time()
-        return
-    '''
->>>>>>> 076e169d382f406399979b1b01a1a35b94031da7
 
     def callbackPose(self, msg):
         position_new = self.position_current.copy()

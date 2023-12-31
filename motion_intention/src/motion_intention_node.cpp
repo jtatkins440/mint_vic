@@ -20,7 +20,7 @@ class MIntNodeWrapper{
 	public:
 
 		MIntNodeWrapper(){
-			ros::NodeHandle nh("mint");
+			ros::NodeHandle nh("intention_predictor");
 			//nh.getParam
 			
 			//sub = nh.subscribe("/ee_pose", 2, &MIntNodeWrapper::subscriberCallback, this); // assumes it's reading a task_space PoseStamped message
@@ -28,14 +28,14 @@ class MIntNodeWrapper{
 			pub = nh.advertise<geometry_msgs::PoseStamped>("/ee_pose_eq", 2);
 
 			
-			if (ros::param::get("/mint/model_weights_path", model_weights_path)) {
+			if (nh.getParam("model_weights_path", model_weights_path)) {
 				std::cout << "Recieved model_weights_path as " << model_weights_path << std::endl;
 			}
 			else {
 				ROS_INFO("!!!No model_weights_path in motion_intention_node!!!");
 			};
 
-			if (ros::param::get("/mint/hparam_json_path", hyperparam_weights_path)) {
+			if (nh.getParam("hparam_json_path", hyperparam_weights_path)) {
 				std::cout << "Recieved hyperparam_weights_path as " << hyperparam_weights_path << std::endl;
 			}
 			else {
@@ -49,14 +49,14 @@ class MIntNodeWrapper{
 			mint_line = LineFitWrapper(hyperparam_weights_path);
     		mint_circ = CircleFitWrapper(hyperparam_weights_path);
 
-			ros::param::param<double>("/mint/sample_time", sample_time, 0.005);
-			ros::param::param<double>("/mint/allowable_time", allowable_time_tolerance, 0.0005);
-			ros::param::param<int>("/mint/inference_rate", inference_rate, 500);
-			ros::param::param<int>("/mint/pose_deque_min_size", pose_deque_min_size, 3);
-			ros::param::param<int>("/mint/state_dim", state_dim, 2);
-			ros::param::param<int>("/mint/seq_length", seq_length, 125);
-			ros::param::param<int>("/mint/mint_state_dim", mint_state_dim, 4);
-			ros::param::param<int>("/mint/cfit_state_dim", cfit_state_dim, 2);
+			nh.param<double>("sample_time", sample_time, 0.005);
+			nh.param<double>("allowable_time", allowable_time_tolerance, 0.0005);
+			nh.param<int>("inference_rate", inference_rate, 500);
+			nh.param<int>("pose_deque_min_size", pose_deque_min_size, 3);
+			nh.param<int>("state_dim", state_dim, 2);
+			nh.param<int>("seq_length", seq_length, 125);
+			nh.param<int>("mint_state_dim", mint_state_dim, 4);
+			nh.param<int>("cfit_state_dim", cfit_state_dim, 2);
 			input_deque_seq_length = mintnet.input_seq_length;
 			time_start = std::chrono::steady_clock::now();
 
@@ -103,10 +103,8 @@ class MIntNodeWrapper{
 		bool b_deque_ready = false; // flag for toggling if deque is full or not
 		bool b_mint_ready = false; // flag for toggling if mint method is fitted and ready to give predictions
 
-
 		std::string model_weights_path, hyperparam_weights_path;
 		ros::ServiceServer srv_set_mint_type;
-		
 
 		void subscriberCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
 		void subscriberHistoryCallback(const motion_intention::HistoryStamped::ConstPtr& msg);
@@ -118,7 +116,6 @@ class MIntNodeWrapper{
 };
 
 bool MIntNodeWrapper::setMotionIntentType(motion_intention::SetInt::Request &req, motion_intention::SetInt::Response &res){
-	
     
     std::string out_string;
 	std::string type_name;
@@ -139,7 +136,6 @@ bool MIntNodeWrapper::setMotionIntentType(motion_intention::SetInt::Request &req
 		return res.success; // gets out of 
 	}
 
-	
 	res.success = true;
 	fit_type = req.data;
     out_string = "motion_intention class fitting type set to " + type_name + "!!!";
@@ -170,16 +166,10 @@ void MIntNodeWrapper::subscriberHistoryCallback(const motion_intention::HistoryS
 	cfit_input_array = full_hist_matrix.block(0,0,cfit_state_dim,cols).eval();
 	mint_input_array = full_hist_matrix.block(2,0,mint_state_dim,cols).eval();
 
-	
-
 	Eigen::Matrix<float, 4, 1> current_state_temp;
 	current_state_temp << (float) msg->state[0], (float) msg->state[1], (float) msg->state[2], (float) msg->state[3];
 	current_state.swap(current_state_temp);
 	b_deque_ready = true;
-
-	//std::cout << "mint_input_array = " << std::endl << mint_input_array << std::endl;
-	//std::cout << "cfit_input_array = " << std::endl << cfit_input_array << std::endl;
-	//std::cout << "current_state = " << std::endl << current_state << std::endl;
 };
 
 void MIntNodeWrapper::fitHandler(){
@@ -191,17 +181,8 @@ void MIntNodeWrapper::fitHandler(){
 		// if enough time has passed, update the deque and refit the spine
 		//std::cout << "Updating mintnet, time_span.count(): " << time_span.count() << std::endl;
 		if (b_deque_ready){
-			//ROS_WARN("MInt: in fitHandler, in b_deque_ready, before .fit() functions near 186:");
-			//Eigen::Array<float, 4, 1> current_state;
-			//Eigen::Array<float, 4, 1> current_vel_acc;
-			//current_vel_acc = input_array[input_array.size() - 1];
-			//current_state << current_position(0), current_position(1), current_vel_acc(0), current_vel_acc(1);
-			//std::cout << "dequeHandler, current_state: " << current_state << std::endl;
-			//ROS_WARN("MInt: in fitHandler, in b_deque_ready, before mintnet.fit():");
 			mintnet.fit(current_state, mint_input_array); // expects [current_position; current_velocity] for first argument!
-			//ROS_WARN("MInt: in fitHandler, in b_deque_ready, before mint_line.fit():");
 			mint_line.fit(current_state, cfit_input_array); 
-			//ROS_WARN("MInt: in fitHandler, in b_deque_ready, before mint_circ.fit():");
 			mint_circ.fit(current_state, cfit_input_array); 
 			b_mint_ready = true;
 		}
@@ -212,7 +193,6 @@ void MIntNodeWrapper::fitHandler(){
 void MIntNodeWrapper::dequeHandler(){
 	std::chrono::steady_clock::time_point time_current = std::chrono::steady_clock::now();
 	bool update_deque_flag = true;
-
 
 	time_current = std::chrono::steady_clock::now();
 	std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(time_current - time_start);
@@ -243,12 +223,7 @@ void MIntNodeWrapper::dequeHandler(){
 
 // this assumes the deque will be given inputs of global positions. Ideally we'd just have velocity and acceleration inputs from the admittance controller.
 void MIntNodeWrapper::updateDeque(Eigen::ArrayXf new_pose, float dt){
-	// if mintnet
 
-	// fill in deque
-
-
-	//std::cout << "Before pose_deque.size()" << std::endl;
 	if (pose_deque.size() >= input_deque_seq_length) {
 		pose_deque.pop_front(); // if we don't seperate these two conditions then pose_deque would be longer than input_deque. Not a big problem though, merge later if needed.
 	}
@@ -273,10 +248,6 @@ void MIntNodeWrapper::updateDeque(Eigen::ArrayXf new_pose, float dt){
 		//std::cout << "new_input: " << new_input << std::endl;
 		input_deque.push_back(new_input);
 	}
-	
-	// if circlefit
-
-	// if linearfit
 
 	return; 
 };
@@ -284,27 +255,10 @@ void MIntNodeWrapper::updateDeque(Eigen::ArrayXf new_pose, float dt){
 void MIntNodeWrapper::mainLoop() {
 	
 	ros::Rate r(inference_rate);
-
-	//static tf2_ros::TransformBroadcaster br;
-
-	/*
-	geometry_msgs::TransformStamped transformStamped;
-	transformStamped.header.frame_id = "world";
-	transformStamped.child_frame_id = "ee_eq";
-	transformStamped.header.stamp = ros::Time::now();
-	transformStamped.transform.rotation.x = 0.0;
-	transformStamped.transform.rotation.y = 0.0;
-	transformStamped.transform.rotation.z = 0.0;
-	transformStamped.transform.rotation.w = 1.0;
-	*/
 	
 	//ROS_INFO("MInt: before while (ros::ok()):");
 	while (ros::ok()){
 		geometry_msgs::PoseStamped pose_s; // empty posestamped message
-
-		//dequeHandler();
-		//ROS_INFO("MInt: before fitHandler():");
-		//ROS_WARN("MInt: before fitHandler():");
 		fitHandler();
 		//Eigen::ArrayXf eq_pose = Eigen::ArrayXf::Zero(2,1);
 		Eigen::ArrayXf eq_pose = Eigen::ArrayXf::Zero(2,1);
@@ -333,20 +287,6 @@ void MIntNodeWrapper::mainLoop() {
 			pose_s.header.stamp = ros::Time::now();
 			//std::cout << "Got new eq_pose! It's: "<< eq_pose << std::endl;
 
-			/*
-			geometry_msgs::TransformStamped transformStamped;
-			transformStamped.header.frame_id = "world";
-			transformStamped.child_frame_id = "ee_eq";
-			transformStamped.header.stamp = ros::Time::now();
-			transformStamped.transform.rotation.x = 0.0;
-			transformStamped.transform.rotation.y = 0.0;
-			transformStamped.transform.rotation.z = 0.0;
-			transformStamped.transform.rotation.w = 1.0;
-
-			transformStamped.header.stamp = ros::Time::now();
-			transformStamped.transform.translation.x = eq_pose(0);
-			transformStamped.transform.translation.z = eq_pose(1);
-			*/
 		}
 		//ROS_INFO("MInt: before publishing pose_s:");
 		pub.publish(pose_s);
