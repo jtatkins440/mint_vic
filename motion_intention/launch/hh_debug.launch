@@ -1,0 +1,4 @@
+<launch>
+    	<rosparam file="$(find motion_intention)/config/mint_config.yaml" />
+    	
+</launch>
