@@ -1,5 +1,4 @@
 intention_predictor/sample_time: 0.005
-intention_predictor/allowable_time: 0.0005
 intention_predictor/inference_rate: 500
 intention_predictor/pose_deque_min_size: 3
 intention_predictor/position_size: 3
@@ -7,6 +6,7 @@ intention_predictor/state_dim: 2
 intention_predictor/seq_length: 125
 intention_predictor/history_rate: 200
 intention_predictor/mint_state_dim: 4
+intention_predictor/swap_xy_axis: false
 
 history_handler/state_dim: 2
 history_handler/seq_length: 125

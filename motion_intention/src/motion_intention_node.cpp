@@ -50,13 +50,13 @@ class MIntNodeWrapper{
     		mint_circ = CircleFitWrapper(hyperparam_weights_path);
 
 			nh.param<double>("sample_time", sample_time, 0.005);
-			nh.param<double>("allowable_time", allowable_time_tolerance, 0.0005);
 			nh.param<int>("inference_rate", inference_rate, 500);
 			nh.param<int>("pose_deque_min_size", pose_deque_min_size, 3);
 			nh.param<int>("state_dim", state_dim, 2);
 			nh.param<int>("seq_length", seq_length, 125);
 			nh.param<int>("mint_state_dim", mint_state_dim, 4);
 			nh.param<int>("cfit_state_dim", cfit_state_dim, 2);
+			nh.param<bool>("swap_xy_axis", b_swap_axis, false);
 			input_deque_seq_length = mintnet.input_seq_length;
 			time_start = std::chrono::steady_clock::now();
 
@@ -70,8 +70,8 @@ class MIntNodeWrapper{
 		};
 
 		void mainLoop();
-		void dequeHandler();
-		void startDequeHandler();
+		//void dequeHandler();
+		//void startDequeHandler();
 		void fitHandler();
 		void waitRemainingLoopTime(std::chrono::time_point<std::chrono::steady_clock> start_time, std::chrono::duration<double> desired_duration);
 
@@ -93,13 +93,13 @@ class MIntNodeWrapper{
 		Eigen::ArrayXXf cfit_input_array;
 		int pose_deque_min_size;
 		double sample_time;
-		double allowable_time_tolerance;
 		int inference_rate;
 		int position_size;
 		int state_dim;
 		int seq_length;
 		int mint_state_dim;
 		int cfit_state_dim;
+		bool b_swap_axis;
 
 		bool b_deque_ready = false; // flag for toggling if deque is full or not
 		bool b_mint_ready = false; // flag for toggling if mint method is fitted and ready to give predictions
@@ -107,9 +107,9 @@ class MIntNodeWrapper{
 		std::string model_weights_path, hyperparam_weights_path;
 		ros::ServiceServer srv_set_mint_type;
 
-		void subscriberCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
+		//void subscriberCallback(const geometry_msgs::PoseStamped::ConstPtr& msg);
 		void subscriberHistoryCallback(const motion_intention::HistoryStamped::ConstPtr& msg);
-		void updateDeque(Eigen::ArrayXf new_pose, float dt);
+		//void updateDeque(Eigen::ArrayXf new_pose, float dt);
 		bool setMotionIntentType(motion_intention::SetInt::Request &req, motion_intention::SetInt::Response &res);
 
 	private:
@@ -144,6 +144,7 @@ bool MIntNodeWrapper::setMotionIntentType(motion_intention::SetInt::Request &req
     return res.success;
 };
 
+/*
 void MIntNodeWrapper::subscriberCallback(const geometry_msgs::PoseStamped::ConstPtr& msg){
 	geometry_msgs::Point position_new;
 	position_new = msg -> pose.position;
@@ -155,6 +156,7 @@ void MIntNodeWrapper::subscriberCallback(const geometry_msgs::PoseStamped::Const
 
 	return;
 };
+*/
 
 void MIntNodeWrapper::subscriberHistoryCallback(const motion_intention::HistoryStamped::ConstPtr& msg){
 	int rows = msg->history.layout.dim[0].size;
@@ -164,11 +166,26 @@ void MIntNodeWrapper::subscriberHistoryCallback(const motion_intention::HistoryS
   	Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> hist_matrix(data.data(), rows, cols);
 
 	Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> full_hist_matrix = (hist_matrix.cast <float> ());
-	cfit_input_array = full_hist_matrix.block(0,0,cfit_state_dim,cols).eval();
-	mint_input_array = full_hist_matrix.block(2,0,mint_state_dim,cols).eval();
 
 	Eigen::Matrix<float, 4, 1> current_state_temp;
-	current_state_temp << (float) msg->state[0], (float) msg->state[1], (float) msg->state[2], (float) msg->state[3];
+	
+
+	if (b_swap_axis){
+		// swap x and y channels to account for the frame transformation
+		Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> full_hist_matrix_temp = full_hist_matrix;
+		int axis_blocks = rows / 2;
+		for (int i = 0; i < axis_blocks; i++){
+			full_hist_matrix.block(i * state_dim, 0, 1, cols) = full_hist_matrix_temp.block(i * state_dim + 1, 0, 1, cols);
+			full_hist_matrix.block(i * state_dim + 1, 0, 1, cols) = full_hist_matrix_temp.block(i * state_dim, 0, 1, cols);
+		}
+		current_state_temp << (float) msg->state[1], (float) msg->state[0], (float) msg->state[3], (float) msg->state[2];
+	} 
+	else{
+		current_state_temp << (float) msg->state[0], (float) msg->state[1], (float) msg->state[2], (float) msg->state[3];
+	}
+
+	cfit_input_array = full_hist_matrix.block(0,0,cfit_state_dim,cols).eval();
+	mint_input_array = full_hist_matrix.block(2,0,mint_state_dim,cols).eval();
 	current_state.swap(current_state_temp);
 	b_deque_ready = true;
 };
@@ -180,7 +197,6 @@ void MIntNodeWrapper::fitHandler(){
 	std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(time_current - time_start);
 	if (sample_time <= time_span.count()){
 		// if enough time has passed, update the deque and refit the spine
-		//std::cout << "Updating mintnet, time_span.count(): " << time_span.count() << std::endl;
 		if (b_deque_ready){
 			mintnet.fit(current_state, mint_input_array); // expects [current_position; current_velocity] for first argument!
 			mint_line.fit(current_state, cfit_input_array); 
@@ -191,6 +207,7 @@ void MIntNodeWrapper::fitHandler(){
 	}
 };
 
+/*
 void MIntNodeWrapper::dequeHandler(){
 	std::chrono::steady_clock::time_point time_current = std::chrono::steady_clock::now();
 	bool update_deque_flag = true;
@@ -199,19 +216,15 @@ void MIntNodeWrapper::dequeHandler(){
 	std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(time_current - time_start);
 	if (sample_time <= time_span.count()){
 		// if enough time has passed, update the deque and refit the spine
-		//Eigen::ArrayXf pose_new(mintnet.output_chn_size, 1);
 		Eigen::Array<float, 2, 1> pose_new;
 		pose_new << current_position(0), current_position(1); // x and y position only!
-		//std::cout << "Before updateDeque..." << std::endl;
 		std::cout << "time_span.count(): " << time_span.count() << std::endl;
 		updateDeque(pose_new, time_span.count());
-		//std::cout << "After updateDeque..." << std::endl;
 		if (b_deque_ready){
 			Eigen::Array<float, 4, 1> current_state;
 			Eigen::Array<float, 4, 1> current_vel_acc;
 			current_vel_acc = input_deque[input_deque.size() - 1];
 			current_state << current_position(0), current_position(1), current_vel_acc(0), current_vel_acc(1);
-			//std::cout << "dequeHandler, current_state: " << current_state << std::endl;
 
 			std::cout << std::endl;
 			mintnet.fit(current_state, input_deque); // expects [current_position; current_velocity] for first argument!
@@ -221,7 +234,9 @@ void MIntNodeWrapper::dequeHandler(){
 		time_start = std::chrono::steady_clock::now();
 	}
 };
+*/
 
+/*
 // this assumes the deque will be given inputs of global positions. Ideally we'd just have velocity and acceleration inputs from the admittance controller.
 void MIntNodeWrapper::updateDeque(Eigen::ArrayXf new_pose, float dt){
 
@@ -237,21 +252,18 @@ void MIntNodeWrapper::updateDeque(Eigen::ArrayXf new_pose, float dt){
 
 	pose_deque.push_back(new_pose);
 	if (pose_deque.size() > pose_deque_min_size){
-		//std::cout << "pose_deque[pose_deque.size() - 1]: " << pose_deque[pose_deque.size() - 1] << std::endl;
-		//std::cout << "pose_deque[pose_deque.size() - 2]: " << pose_deque[pose_deque.size() - 2] << std::endl;
 		Eigen::Array<float, 2, 1> vel_est;
 		vel_est << (pose_deque[pose_deque.size() - 1] - pose_deque[pose_deque.size() - 2]) / dt;
 		Eigen::Array<float, 2, 1> acc_est;
 		acc_est << (vel_est - (pose_deque[pose_deque.size() - 2] - pose_deque[pose_deque.size() - 3]) / dt) / dt;
 		Eigen::Array<float, 4, 1> new_input;
-		//std::cout << "vel_est: " << vel_est << " acc_est: " << acc_est << std::endl;
 		new_input << vel_est, acc_est;
-		//std::cout << "new_input: " << new_input << std::endl;
 		input_deque.push_back(new_input);
 	}
 
 	return; 
 };
+*/
 
 void MIntNodeWrapper::waitRemainingLoopTime(std::chrono::time_point<std::chrono::steady_clock> start_time, std::chrono::duration<double> desired_duration){
 	std::chrono::duration<double> diff = std::chrono::steady_clock::now() - start_time; 
@@ -263,16 +275,12 @@ void MIntNodeWrapper::waitRemainingLoopTime(std::chrono::time_point<std::chrono:
 void MIntNodeWrapper::mainLoop() {
 	
 	ros::Rate r(inference_rate);
-	
-	//ROS_INFO("MInt: before while (ros::ok()):");
 	while (ros::ok()){
 		geometry_msgs::PoseStamped pose_s; // empty posestamped message
 		fitHandler();
-		//Eigen::ArrayXf eq_pose = Eigen::ArrayXf::Zero(2,1);
 		Eigen::ArrayXf eq_pose = Eigen::ArrayXf::Zero(2,1);
 		if (b_mint_ready){
 			// update empty message with fitted value
-			//ROS_WARN("MInt: before if(fit_type):");
 			if (fit_type == 0){
 				eq_pose = mintnet.getEquilibriumPoint();
 			}
@@ -286,19 +294,21 @@ void MIntNodeWrapper::mainLoop() {
 				ROS_WARN("MInt: Invalid fit_type!");
 			}
 			
-			std::cout << "MInt: eq_pose: " << eq_pose << " for fit_type: " << fit_type << "." << std::endl;
-			//ROS_WARN("MInt: before setting pose_s:");
-			pose_s.pose.position.x = eq_pose(0);
-			pose_s.pose.position.z = eq_pose(1);
+			if (b_swap_axis){
+				pose_s.pose.position.x = eq_pose(1);
+				pose_s.pose.position.z = eq_pose(0);
+			} 
+			else{
+				pose_s.pose.position.x = eq_pose(0);
+				pose_s.pose.position.z = eq_pose(1);
+			}
+			
 			pose_s.pose.orientation.w = 1.0;
 			pose_s.header.frame_id = "ee_eq";
 			pose_s.header.stamp = ros::Time::now();
-			//std::cout << "Got new eq_pose! It's: "<< eq_pose << std::endl;
 
 		}
-		//ROS_INFO("MInt: before publishing pose_s:");
 		pub.publish(pose_s);
-		//br.sendTransform(transformStamped);
 
 		ros::spinOnce();
 		r.sleep();
@@ -309,10 +319,5 @@ void MIntNodeWrapper::mainLoop() {
 int main(int argc, char **argv){
 	ros::init(argc, argv, "motion_intent");
 	MIntNodeWrapper minty;
-	//minty.startDequeHandler();
-	//std::cout << "DequeHandler started!" << std::endl;
-	//std::thread dequeHandlerThread (&MIntNodeWrapper::dequeHandler, this); 
-	//std::thread deque_handler_thread(&MIntNodeWrapper::dequeHandler, minty);
 	minty.mainLoop();
-	//deque_handler_thread.join();
 }
