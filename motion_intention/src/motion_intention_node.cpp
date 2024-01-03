@@ -73,6 +73,7 @@ class MIntNodeWrapper{
 		void dequeHandler();
 		void startDequeHandler();
 		void fitHandler();
+		void waitRemainingLoopTime(std::chrono::time_point<std::chrono::steady_clock> start_time, std::chrono::duration<double> desired_duration);
 
 		//ros::Subscriber sub;
 		ros::Subscriber sub_hist;
@@ -250,6 +251,13 @@ void MIntNodeWrapper::updateDeque(Eigen::ArrayXf new_pose, float dt){
 	}
 
 	return; 
+};
+
+void MIntNodeWrapper::waitRemainingLoopTime(std::chrono::time_point<std::chrono::steady_clock> start_time, std::chrono::duration<double> desired_duration){
+	std::chrono::duration<double> diff = std::chrono::steady_clock::now() - start_time; 
+	while (diff.count() < desired_duration.count()){
+		diff = std::chrono::steady_clock::now() - start_time; 
+	}
 };
 
 void MIntNodeWrapper::mainLoop() {
