@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.0.2)
 project(motion_intention)
 
 set(Torch_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lib/libtorch/share/cmake/Torch)
+set(iir_DIR /usr/local/lib/cmake/iir)
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
 add_compile_options(-std=c++17)
@@ -21,7 +22,8 @@ find_package(catkin REQUIRED COMPONENTS
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
-find_package(Torch REQUIRED)
+find_package(Torch REQUIRED) # for loading the mintnet into c++
+find_package(iir REQUIRED) # for filtering the inputs to the mintnet
 
 
 ## Uncomment this if the package has a setup.py. This macro ensures
@@ -141,6 +143,7 @@ include_directories(
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 add_executable(${PROJECT_NAME}_node src/motion_intention_node.cpp)
+add_executable(history_handler_node src/history_handler_node.cpp)
 add_executable(mintwrapper_test src/mintwrapper_test.cpp)
 
 ## Rename C++ executable without prefix
@@ -153,6 +156,7 @@ add_executable(mintwrapper_test src/mintwrapper_test.cpp)
 ## same as for the library above
 # add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(history_handler_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 add_dependencies(mintwrapper_test ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
@@ -160,9 +164,15 @@ target_link_libraries(${PROJECT_NAME}_node
    ${catkin_LIBRARIES}
    ${TORCH_LIBRARIES})
    
+target_link_libraries(history_handler_node
+   ${catkin_LIBRARIES}
+   ${TORCH_LIBRARIES}
+   iir::iir)
+   
 target_link_libraries(mintwrapper_test
    ${catkin_LIBRARIES}
    ${TORCH_LIBRARIES})
+   
 
 #############
 ## Install ##
