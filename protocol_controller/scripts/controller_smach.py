@@ -131,23 +131,25 @@ class Init_Trial(smach.State):
         
 
     def execute(self, userdata):
-        print("Hello")
+        #print("Hello")
         subject_num = int(input("Enter the Subject's Number: "))
         print("Choose a fitting method:")
         print("1. MIntNet")
         print("2. Linear Fitting")
         print("3. Circle Fitting")
-        method = int(input("Enter your choice (1/2/3): "))
+        print("4. Zero Stiffness")
+        method = int(input("Enter your choice (1/2/3/4): "))
 
         methodmsg = SetIntRequest()
         methodmsg.data = method - 1
         # Send the chosen method to the MIntNet node via a service
-        try:
-            resp = self.fitting_service(methodmsg)
-            if not resp.success:
-                rospy.logerr("Failed to set fitting method.")
-        except rospy.ServiceException as e:
-            rospy.logerr("Service call failed: %s", e)
+        if method != 4:
+            try:
+                resp = self.fitting_service(methodmsg)
+                if not resp.success:
+                    rospy.logerr("Failed to set fitting method.")
+            except rospy.ServiceException as e:
+                rospy.logerr("Service call failed: %s", e)
 
         # Communicate with the TrialDataLogger node to initialize with the subject number
         #subjectmsg = InitLogger()
@@ -163,7 +165,7 @@ class Init_Trial(smach.State):
 
         userdata.subject_num = subject_num
         userdata.fitting_method = method
-        print("from the other side")
+        #print("from the other side")
         return 'initiated'
 
 
@@ -183,6 +185,8 @@ class BaseTrialState(smach.State):
         self.ik_toggle_orientation_srv = rospy.ServiceProxy('/ik/toggle_ignore_orientation', SetBool)
         self.ik_set_behavior_srv = rospy.ServiceProxy('/ik/set_ik_behavior', SetInt)
         self.initial_pose = np.array([0.0,-0.4231, 0.7589])
+        self.start_guiding = rospy.ServiceProxy('start_guiding', SetInt)
+        self.new_trial = rospy.ServiceProxy('new_trial', SetInt)
 
     def set_ik_behavior(self, val):
         try:
@@ -227,8 +231,24 @@ class BaseTrialState(smach.State):
     def is_close_enough(self, coord1, coord2):
         radius_enough = 0.025
         distance = np.linalg.norm(coord1 - coord2)
-        print(distance)
+        #print(distance)
         return distance <= radius_enough
+    
+    def new_trial_service(self, val):
+        try:
+            resp = self.new_trial(val)
+            if not resp.success:
+                rospy.logerr("Failed to communicate new trial")
+        except rospy.ServiceException as e:
+            rospy.logerr("Service call failed: %s", e)
+
+    def start_guiding_service(self, val):
+        try:
+            resp = self.start_guiding(val)
+            if not resp.success:
+                rospy.logerr("Failed to start guiding service")
+        except rospy.ServiceException as e:
+            rospy.logerr("Service call failed: %s", e)
 
     def start_logging(self, subject_num, trial, method=None, trial_type=None):
         try:
@@ -268,15 +288,17 @@ class BaseTrialState(smach.State):
             path_num = (i // 6) + 1
             pathmap[path_num] = np.column_stack((targetx_data[i:i + 6], targety_data[i:i + 6]))
 
-        total_trials = 7
+        total_trials = 14
         targetXY = np.array([[0], [0]])
         targetXYold = np.array([[0], [0]])
         origin_target = np.array([[0.0], [0.0]])
         sanity_target = np.array([[0.1], [0.0]])
 
-        for trial in range(3):
+        for trial in range(total_trials):
             # Start the trial
-            targets = pathmap[trial + 1]
+            trial_num = trial%7
+
+            targets = pathmap[trial_num + 1]
 
             target_x_gui = targets[:, 0]
             target_y_gui = targets[:, 1]
@@ -315,7 +337,7 @@ class BaseTrialState(smach.State):
 
             while not self.is_close_enough(self.endEffector, targetXY):
                 # print(f"EE Pose: {self.endEffector} and the Target: {targetXY}")
-                print("User trying to reach origin")
+                #print("User trying to reach origin")
                 target_msg = Float64MultiArray()
                 target_msg.data = [targetXY[0][0], targetXY[1][0]]
                 self.target_pub.publish(target_msg)
@@ -341,7 +363,7 @@ class BaseTrialState(smach.State):
             self.prev_target_pub.publish(prev_target_msg)
 
             while not self.is_close_enough(self.endEffector, targetXY):
-                print("User trying to reach sanity target")
+                #print("User trying to reach sanity target")
                 target_msg = Float64MultiArray()
                 target_msg.data = [targetXY[0][0], targetXY[1][0]]
                 self.target_pub.publish(target_msg)
@@ -359,8 +381,11 @@ class BaseTrialState(smach.State):
 
             # Trigger Trial Data Logger
             self.start_logging(userdata.subject_num, trial, userdata.fitting_method, trial_type)
+            # Communicate start of new trials to visualizer
+            self.new_trial_service(1)
 
             for target_count, target in enumerate(targets):
+                
                 print(f"Target No. {target_count} out of 6")
                 targetXYold = targetXY
                 targetXY = target.reshape(2, 1)
@@ -375,12 +400,16 @@ class BaseTrialState(smach.State):
                 self.prev_target_pub.publish(prev_target_msg)
 
                 while not self.is_close_enough(self.endEffector, targetXY):
-                    print(f"User trying to reach target no. {target_count}")
+                    #print(f"User trying to reach target no. {target_count}")
                     target_msg = Float64MultiArray()
                     target_msg.data = [targetXY[0][0], targetXY[1][0]]
                     self.target_pub.publish(target_msg)
                     time.sleep(0.001)
 
+                self.start_guiding_service(target_count)
+
+            #End guiding: visualizer refreshes to new trial
+            #self.stop_guiding()
             # Wait for 5 seconds before the next trial
             targetXY = np.array([[0], [0]])
             # Trigger Trial Data Logger to close and save the file
@@ -408,9 +437,12 @@ class Calibration(BaseTrialState):
     def execute(self, userdata):
         # Toggle MIntNet Node off
         # self.toggle_mintnet(False)
-        # userdata.trial_type = 'Calibration'
-        # self.set_controller_behaviour(1)
-        # super(Calibration, self).execute(userdata)
+        userdata.trial_type = 'Calibration'
+        if userdata.fitting_method == 4:
+            self.set_controller_behaviour(1)
+        else:
+            self.set_controller_behaviour(2)
+        super(Calibration, self).execute(userdata)
 
         # Once trials are completed, toggle MIntNet Node back on
         # self.toggle_mintnet(True)
@@ -435,7 +467,10 @@ class Fit_Trial_Block(BaseTrialState):
 
     def execute(self, userdata):
         userdata.trial_type = 'Fitting'
-        self.set_controller_behaviour(3)
+        if userdata.fitting_method == 4:
+            return 'fitted'
+        else:
+            self.set_controller_behaviour(3)
         super(Fit_Trial_Block, self).execute(userdata)
 
         return 'fitted'
