@@ -291,6 +291,7 @@ class LineFitWrapper{
 	float equilibrium_lead_time;
 	float dt;
 	int trim_seq_length;
+	float time_scalar;
 	std::chrono::time_point<std::chrono::steady_clock> timer_start;
 	Eigen::MatrixXf A;
 	Eigen::MatrixXf b_coeffs;
@@ -307,7 +308,7 @@ class LineFitWrapper{
 		input_seq_length = int(data_helper["input_sequence_length"]);
 		output_seq_length = int(data_model["M"]) * int(data_model["G"]);
 		equilibrium_lead_time = (float) data_helper["lead_time"];
-
+		time_scalar = (float) data_helper["linear_lead_time_scalar"];
 		trim_seq_length = (int) data_helper["input_sequence_trim_length"];
 		dt = (float) data_helper["dt"];
 
@@ -370,7 +371,7 @@ class LineFitWrapper{
 	Eigen::ArrayXf getEquilibriumPoint(){
 		auto end = std::chrono::steady_clock::now();
 		std::chrono::duration<double> diff = end - timer_start;
-		double spline_eq_time = (diff.count() + equilibrium_lead_time); // have to flip the direction to make it work as desired
+		double spline_eq_time = time_scalar * (diff.count() + equilibrium_lead_time); // have to flip the direction to make it work as desired
 
 		Eigen::ArrayXf eq_point(output_chn_size);
 		eq_point << b_coeffs(0,0) + b_coeffs(1, 0) * spline_eq_time, b_coeffs(0,1) + b_coeffs(1, 1) * spline_eq_time;
@@ -400,6 +401,7 @@ class CircleFitWrapper{
 		input_seq_length = int(data_helper["input_sequence_length"]);
 		output_seq_length = int(data_model["M"]) * int(data_model["G"]);
 		eq_lead_time = (float) data_helper["lead_time"];
+		time_scalar = (float) data_helper["circle_lead_time_scalar"];
 		dt = (float) data_helper["dt"];
 
 		trim_seq_length = (int) data_helper["input_sequence_trim_length"];
@@ -435,10 +437,14 @@ class CircleFitWrapper{
 		CircleData Datafitcircle(size, x_array, y_array);
 		circle = CircleFitByPratt(Datafitcircle);
 
-
-		x_eq(0) = circle.a + circle.r*(current_state(0)-circle.a)/(sqrt(pow(current_state(0)-circle.a,2)+pow(current_state(1)-circle.b,2)));
-		x_eq(1) = circle.b + (x_eq(0)-circle.a)*(current_state(1)-circle.b)/(current_state(0)-circle.a);
-
+		Eigen::ArrayXf leading_state = current_state;
+		leading_state(0) = leading_state(0) + time_scalar * eq_lead_time * leading_state(2);
+		leading_state(1) = leading_state(1) + time_scalar * eq_lead_time * leading_state(3);
+		x_eq(0) = circle.a + circle.r*(leading_state(0)-circle.a)/(sqrt(pow(leading_state(0)-circle.a,2)+pow(leading_state(1)-circle.b,2)));
+		x_eq(1) = circle.b + (x_eq(0)-circle.a)*(leading_state(1)-circle.b)/(leading_state(0)-circle.a);
+		
+		//x_eq(0) = circle.a + circle.r*(current_state(0)-circle.a)/(sqrt(pow(current_state(0)-circle.a,2)+pow(current_state(1)-circle.b,2)));
+		//x_eq(1) = circle.b + (x_eq(0)-circle.a)*(current_state(1)-circle.b)/(current_state(0)-circle.a);
 		//x_eq(0) = projected(0);
 		//x_eq(1) = projected(1);
 		//angleproj = atan2(projected(1)-xcurrent(1),projected(0)-xcurrent(0));
@@ -463,6 +469,7 @@ class CircleFitWrapper{
 	int model_order;
 	float eq_lead_time;
 	float dt;
+	float time_scalar;
 	std::chrono::time_point<std::chrono::steady_clock> timer_start;
 	//Eigen::FullPivHouseholderQR:::FullPivHouseholderQR<Eigen::MatrixXf> A_QR;
 	Eigen::MatrixXf A;
