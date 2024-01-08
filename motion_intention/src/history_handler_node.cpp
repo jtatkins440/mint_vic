@@ -158,7 +158,6 @@ void HistoryHandlerWrapper::filterStateVector(){
 	filtered_state_vector.clear();
 	for (int i = 0; i < filter_dim; i++){
 		filtered_state_vector.push_back(filter_array[i].filter(state_vector[i]));
-		//filtered_state_vector.push_back(state_vector[i]);
 	}
 	
 	/*

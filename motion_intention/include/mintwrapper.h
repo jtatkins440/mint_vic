@@ -285,10 +285,12 @@ class LineFitWrapper{
 	int input_chn_size;
 	int output_chn_size;
 	int input_seq_length;
+	int used_seq_length;
 	int output_seq_length;
 	int model_order;
 	float equilibrium_lead_time;
 	float dt;
+	int trim_seq_length;
 	std::chrono::time_point<std::chrono::steady_clock> timer_start;
 	Eigen::MatrixXf A;
 	Eigen::MatrixXf b_coeffs;
@@ -305,16 +307,19 @@ class LineFitWrapper{
 		input_seq_length = int(data_helper["input_sequence_length"]);
 		output_seq_length = int(data_model["M"]) * int(data_model["G"]);
 		equilibrium_lead_time = (float) data_helper["lead_time"];
+
+		trim_seq_length = (int) data_helper["input_sequence_trim_length"];
 		dt = (float) data_helper["dt"];
 
+		used_seq_length = input_seq_length - trim_seq_length; // probably should check if non-positive
 
 		// generate observation 'X' array as a 125x2 array where column 0 is just 1's and column 1 is time corresponding to each input. Should be static.
 		//Eigen::MatrixXf A(input_seq_length, output_chn_size);
-		A = Eigen::MatrixXf::Zero(input_seq_length, output_chn_size);
+		A = Eigen::MatrixXf::Zero(used_seq_length, output_chn_size);
 		std::cout << "LineFitWrapper Constructor: " << "A.rows(): " << A.rows() << ", A.cols(): " << A.cols() << std::endl;
-		for (int row = 0; row < input_seq_length; row++){
+		for (int row = 0; row < used_seq_length; row++){
 			A(row, 0) = 1.0;
-			A(row, 1) = ((float)(input_seq_length - row - 1)) * dt;
+			A(row, 1) = -((float)(used_seq_length - row - 1)) * dt;
 		}
 		//std::cout << "A.rows(): " << A.rows() << ", A.cols(): " << A.cols() << std::endl;
 		
@@ -335,7 +340,7 @@ class LineFitWrapper{
 	void fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input){
 		// current state is ignored, only here because of compatibility with ROS wrapper
 		// input is assumed to be 2x125 of [p_x, p_y] values.
-		Eigen::MatrixXf Y_full = input.matrix().transpose();
+		Eigen::MatrixXf Y_full = input.matrix().bottomRightCorner(input.rows(), used_seq_length).transpose();
 
 		
 		// rebuild A (shouldn't need to do this outside of constructor, weird behavior)
@@ -365,7 +370,7 @@ class LineFitWrapper{
 	Eigen::ArrayXf getEquilibriumPoint(){
 		auto end = std::chrono::steady_clock::now();
 		std::chrono::duration<double> diff = end - timer_start;
-		double spline_eq_time = diff.count() + equilibrium_lead_time;
+		double spline_eq_time = (diff.count() + equilibrium_lead_time); // have to flip the direction to make it work as desired
 
 		Eigen::ArrayXf eq_point(output_chn_size);
 		eq_point << b_coeffs(0,0) + b_coeffs(1, 0) * spline_eq_time, b_coeffs(0,1) + b_coeffs(1, 1) * spline_eq_time;
@@ -397,6 +402,9 @@ class CircleFitWrapper{
 		eq_lead_time = (float) data_helper["lead_time"];
 		dt = (float) data_helper["dt"];
 
+		trim_seq_length = (int) data_helper["input_sequence_trim_length"];
+		used_seq_length = input_seq_length - trim_seq_length;
+
 		// generate observation 'X' array as a 125x2 array where column 0 is just 1's and column 1 is time corresponding to each input. Should be static.
 
 		// TODO: add circle stuff too
@@ -416,12 +424,12 @@ class CircleFitWrapper{
 		// current state is ignored, only here because of compatibility with ROS wrapper
 		// input is assumed to be 2x125 of [p_x, p_y] values.
 
-		int size = input.cols();
+		int size = used_seq_length; //input.cols();
 		double x_array[size];
 		double y_array[size];
 		for (int i = 0; i < size; i++){
-			x_array[i] = input(0, i); // x_pos
-			y_array[i] = input(1, i); // y_pos
+			x_array[i] = input(0, i + trim_seq_length); // x_pos
+			y_array[i] = input(1, i + trim_seq_length); // y_pos
 		}
 
 		CircleData Datafitcircle(size, x_array, y_array);
@@ -450,6 +458,8 @@ class CircleFitWrapper{
 	int output_chn_size;
 	int input_seq_length;
 	int output_seq_length;
+	int trim_seq_length;
+	int used_seq_length;
 	int model_order;
 	float eq_lead_time;
 	float dt;

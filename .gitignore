@@ -1,4 +1,5 @@
 motion_intention/lib/
 motion_intention/include/Eigen/
 motion_intention/include/nlohmann/
+motion_intention/include/iir/
 trial_data_logger/scripts/DATA/
