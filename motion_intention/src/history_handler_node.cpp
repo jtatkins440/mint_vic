@@ -29,17 +29,19 @@ class HistoryHandlerWrapper{
 		history_dt = 1.0 / history_rate;
 		history_dim = state_dim * 3;
 		pos_vel_dim = state_dim * 2;
-		spinner_thread_num = 3; // one spinner per subscriber
+		spinner_thread_num = 2; // one for sub, one for pub, right?
 		main_loop_duration = std::chrono::duration<double>(history_dt);
 
 		for (int i = 0; i < filter_dim; i++){
 			filter_array[i].setup(filter_sampling_freq, filter_cutoff_freq);
 		}
 		
-		sub_pose = nh.subscribe("/iiwa/ee_pose", 1, &HistoryHandlerWrapper::callbackPose, this);
-		sub_vel = nh.subscribe("/iiwa/ee_vel", 1, &HistoryHandlerWrapper::callbackVelocity, this);
-		sub_acc = nh.subscribe("/iiwa/ee_acc", 1, &HistoryHandlerWrapper::callbackAcceleration, this);
-		pub_hist = nh.advertise<motion_intention::HistoryStamped>("/ee_history", 1);
+		//sub_pose = nh.subscribe("/iiwa/ee_pose", 1, &HistoryHandlerWrapper::callbackPose, this);
+		//sub_vel = nh.subscribe("/iiwa/ee_vel", 1, &HistoryHandlerWrapper::callbackVelocity, this);
+		//sub_acc = nh.subscribe("/iiwa/ee_acc", 1, &HistoryHandlerWrapper::callbackAcceleration, this);
+		sub_admit = nh.subscribe("/iiwa/admit_state", 1, &HistoryHandlerWrapper::callbackAdmitState, this);
+		pub_hist = nh.advertise<motion_intention::HistoryStamped>("/ee_history", 1, true);
+		//pub_nn_input = nh.advertise<motion_intention::HistoryStamped>("/ee_history", 1); // TODO: add functionality to let it publish the full input and outputs we can use to record training inputs to the neural networks during calibration trials
 
 		b_state_history_ready = false;
 
@@ -68,18 +70,15 @@ class HistoryHandlerWrapper{
 	double history_rate;
 	double history_dt;
 	int history_dim;
-	std::vector<double> current_position_vec;
-	std::vector<double> current_velocity_vec;
-	std::vector<double> current_acceleration_vec;
 	std::vector<double> pos_vel_state_vector;
 	std::vector<double> state_vector;
 	std::vector<double> last_state_vector;
 	std::vector<double> filtered_state_vector;
 	std::deque<std::vector<double>> state_history_vector;
 	bool b_state_history_ready;
-	std::mutex mtx_pos; // mutex guards for the async threads updating the values
-	std::mutex mtx_vel;
-	std::mutex mtx_acc;
+	//std::mutex mtx_pos; // mutex guards for the async threads updating the values
+	//std::mutex mtx_vel;
+	//std::mutex mtx_acc;
 	std::chrono::duration<double> main_loop_duration;
 
 	// filter attributes, values needs to be known at compile time! look for a workaround that doesn't involve hardcoding...
@@ -91,18 +90,20 @@ class HistoryHandlerWrapper{
 
 	// ros attributes
 	ros::NodeHandle nh;
-	ros::Subscriber sub_pose;
-	ros::Subscriber sub_vel;
-	ros::Subscriber sub_acc;
+	//ros::Subscriber sub_pose;
+	//ros::Subscriber sub_vel;
+	//ros::Subscriber sub_acc;
+	ros::Subscriber sub_admit;
 	ros::Publisher pub_hist;
 	motion_intention::HistoryStamped hist_msg;
 	std::vector<double> flat_history_vector;
 	int spinner_thread_num;
 
 	// methods
-	void callbackPose(const geometry_msgs::PoseStamped::ConstPtr& msg);
-	void callbackVelocity(const geometry_msgs::TwistStamped::ConstPtr& msg);
-	void callbackAcceleration(const geometry_msgs::TwistStamped::ConstPtr& msg);
+	//void callbackPose(const geometry_msgs::PoseStamped::ConstPtr& msg);
+	//void callbackVelocity(const geometry_msgs::TwistStamped::ConstPtr& msg);
+	//void callbackAcceleration(const geometry_msgs::TwistStamped::ConstPtr& msg);
+	void callbackAdmitState(const motion_intention::AdmitStateStamped::ConstPtr& msg);
 
 	void filterStateVector();
 	void updateDeque();
@@ -113,6 +114,7 @@ class HistoryHandlerWrapper{
 	void mainLoop();
 };
 
+/*
 void HistoryHandlerWrapper::callbackPose(const geometry_msgs::PoseStamped::ConstPtr& msg){
 	//std::lock_guard<std::mutex> guard(mtx_pos);
     state_vector[0] = msg->pose.position.x;
@@ -120,7 +122,9 @@ void HistoryHandlerWrapper::callbackPose(const geometry_msgs::PoseStamped::Const
 	//current_position_vec.clear();
     //current_position_vec = {msg->pose.position.x, msg->pose.position.z};
 };
+*/
 
+/*
 void HistoryHandlerWrapper::callbackVelocity(const geometry_msgs::TwistStamped::ConstPtr& msg){
 	//std::lock_guard<std::mutex> guard(mtx_vel);
 	state_vector[2] = msg->twist.linear.x;
@@ -128,11 +132,26 @@ void HistoryHandlerWrapper::callbackVelocity(const geometry_msgs::TwistStamped::
 	//current_velocity_vec.clear();
 	//current_velocity_vec = {msg->twist.linear.x, msg->twist.linear.z};
 };
+*/
 
+/*
 void HistoryHandlerWrapper::callbackAcceleration(const geometry_msgs::TwistStamped::ConstPtr& msg){
 	//std::lock_guard<std::mutex> guard(mtx_acc); // should unlock when function ends
 	state_vector[4] = msg->twist.linear.x;
 	state_vector[5] = msg->twist.linear.z;
+	//current_acceleration_vec.clear();
+	//current_acceleration_vec = {msg->twist.linear.x, msg->twist.linear.z};
+};
+*/
+
+void HistoryHandlerWrapper::callbackAdmitState(const motion_intention::AdmitStateStamped::ConstPtr& msg){
+	//std::lock_guard<std::mutex> guard(mtx_acc); // should unlock when function ends
+	state_vector[0] = msg->pose.position.x;
+	state_vector[1] = msg->pose.position.z;
+	state_vector[2] = msg->twist.linear.x;
+	state_vector[3] = msg->twist.linear.z;
+	state_vector[4] = msg->accel.linear.x;
+	state_vector[5] = msg->accel.linear.z;
 	//current_acceleration_vec.clear();
 	//current_acceleration_vec = {msg->twist.linear.x, msg->twist.linear.z};
 };
