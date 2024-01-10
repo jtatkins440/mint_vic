@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from visualizer_py.srv import *
 from scipy import interpolate
 from geometry_msgs.msg import PoseStamped
+from motion_intention.msg import AdmitStateStamped
 
 # Global variables
 targetXYold = np.zeros(2)
@@ -95,7 +96,7 @@ def main():
     service = rospy.Service('update_targets', UpdateTargets, update_targets)
     rospy.Subscriber('/PreviousTargets', Float64MultiArray, targetXYold_callback)
     rospy.Subscriber('/CurrentTargets', Float64MultiArray, targetXY_callback)
-    rospy.Subscriber('/iiwa/ee_pose', PoseStamped, endEffectorXY_callback)
+    rospy.Subscriber('/iiwa/admit_state', AdmitStateStamped, endEffectorXY_callback)
     # rospy.Subscriber('/iiwa/j6_pose_custom', Float64MultiArray, endEffectorXY_callback) # --> For simulation
     # rospy.Subscriber('/TrialTargets', Float64MultiArray, targets_callback)
     # Initialize the service

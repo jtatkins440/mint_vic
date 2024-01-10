@@ -10,7 +10,7 @@ from trial_data_logger.srv import *
 from std_msgs.msg import Float64MultiArray
 from motion_intention.srv import *
 from geometry_msgs.msg import PoseStamped, WrenchStamped, TwistStamped
-
+from motion_intention.msg import AdmitStateStamped
 
 class SyncDataLogger:
 
@@ -36,7 +36,9 @@ class SyncDataLogger:
         self.prev_targets = None  # Previous Targets
         self.curr_targets = None  # Current Targets
         self.stiffness = None  # Current Stiffness
+        self.user_intent = None
 
+        '''
         self.subscribers = {
             '/iiwa/joint_states': rospy.Subscriber('/iiwa/joint_states', JointState, self.joint_state_callback),
 
@@ -61,6 +63,37 @@ class SyncDataLogger:
 
             '/iiwa/current_stiffness': rospy.Subscriber('/iiwa/current_stiffness', Float64MultiArray, self.current_stiffness_callback)
         }
+        '''
+
+        self.dataset_items = [
+            '/iiwa/joint_states',
+            '/iiwa/PositionController/command',
+            '/iiwa/ee_pose',
+            '/iiwa/ee_pose_custom',
+            '/iiwa/ee_vel',
+            '/iiwa/ee_acc',
+            '/iiwa/ee_wrench',
+            '/iiwa/ee_pose_eq',
+            '/PreviousTargets',
+            '/CurrentTargets',
+            '/iiwa/current_stiffness',
+            '/iiwa/user_intent']
+
+        self.subscribers = {
+            '/iiwa/joint_states': rospy.Subscriber('/iiwa/joint_states', JointState, self.joint_state_callback),
+
+            '/iiwa/PositionController/command': rospy.Subscriber('/iiwa/PositionController/command', Float64MultiArray,
+                                                                 self.desired_state_callback),
+
+            '/iiwa/ee_pose_custom': rospy.Subscriber('/iiwa/j6_pose_custom', Float64MultiArray, self.current_eepose_callback),
+
+            '/PreviousTargets': rospy.Subscriber('/PreviousTargets', Float64MultiArray, self.prev_targets_callback),
+
+            '/CurrentTargets': rospy.Subscriber('/CurrentTargets', Float64MultiArray, self.current_targets_callback),
+
+            '/iiwa/admit_state': rospy.Subscriber('/iiwa/admit_state', AdmitStateStamped, self.admit_state_callback)
+
+        }
 
     # Callbacks for each topic
     def joint_state_callback(self, msg):
@@ -69,30 +102,30 @@ class SyncDataLogger:
     def desired_state_callback(self, msg):
         self.desired_joint_states = list(msg.data)
 
-    def desired_eepose_callback(self, msg):
-        self.desired_ee_pose = [msg.pose.position.x, msg.pose.position.y, msg.pose.position.z,
-                                msg.pose.orientation.x, msg.pose.orientation.y,
-                                msg.pose.orientation.z, msg.pose.orientation.w]
+    #def desired_eepose_callback(self, msg):
+    #    self.desired_ee_pose = [msg.pose.position.x, msg.pose.position.y, msg.pose.position.z,
+    #                            msg.pose.orientation.x, msg.pose.orientation.y,
+    #                            msg.pose.orientation.z, msg.pose.orientation.w]
 
     def current_eepose_callback(self, msg):
         self.curr_ee_pose = list(msg.data)
 
-    def ee_vel_callback(self, msg):
-        self.ee_vel = [msg.twist.linear.x, msg.twist.linear.y, msg.twist.linear.z,
-                       msg.twist.angular.x, msg.twist.angular.y, msg.twist.angular.z]
+    #def ee_vel_callback(self, msg):
+    #    self.ee_vel = [msg.twist.linear.x, msg.twist.linear.y, msg.twist.linear.z,
+    #                   msg.twist.angular.x, msg.twist.angular.y, msg.twist.angular.z]
 
-    def ee_acc_callback(self, msg):
-        self.ee_acc = [msg.twist.linear.x, msg.twist.linear.y, msg.twist.linear.z,
-                       msg.twist.angular.x, msg.twist.angular.y, msg.twist.angular.z]
+    #def ee_acc_callback(self, msg):
+    #    self.ee_acc = [msg.twist.linear.x, msg.twist.linear.y, msg.twist.linear.z,
+    #                   msg.twist.angular.x, msg.twist.angular.y, msg.twist.angular.z]
 
-    def int_force_callback(self, msg):
-        self.int_force = [msg.wrench.force.x, msg.wrench.force.y, msg.wrench.force.z,
-                          msg.wrench.torque.x, msg.wrench.torque.y, msg.wrench.torque.z]
+    #def int_force_callback(self, msg):
+    #    self.int_force = [msg.wrench.force.x, msg.wrench.force.y, msg.wrench.force.z,
+    #                      msg.wrench.torque.x, msg.wrench.torque.y, msg.wrench.torque.z]
 
-    def ee_pose_eq_callback(self, msg):
-        self.ref_pose = [msg.pose.position.x, msg.pose.position.y, msg.pose.position.z,
-                         msg.pose.orientation.x, msg.pose.orientation.y,
-                         msg.pose.orientation.z, msg.pose.orientation.w]
+    #def ee_pose_eq_callback(self, msg):
+    #    self.ref_pose = [msg.pose.position.x, msg.pose.position.y, msg.pose.position.z,
+    #                     msg.pose.orientation.x, msg.pose.orientation.y,
+    #                     msg.pose.orientation.z, msg.pose.orientation.w]
 
     def prev_targets_callback(self, msg):
         self.prev_targets = list(msg.data)
@@ -100,8 +133,24 @@ class SyncDataLogger:
     def current_targets_callback(self, msg):
         self.curr_targets = list(msg.data)
 
-    def current_stiffness_callback(self, msg):
-        self.stiffness = list(msg.data)
+    #def current_stiffness_callback(self, msg):
+    #    self.stiffness = list(msg.data)
+
+    def admit_state_callback(self, msg):
+        self.desired_ee_pose = [msg.pose.position.x, msg.pose.position.y, msg.pose.position.z,
+                                msg.pose.orientation.x, msg.pose.orientation.y,
+                                msg.pose.orientation.z, msg.pose.orientation.w]
+        self.ref_pose = [msg.pose_eq.position.x, msg.pose_eq.position.y, msg.pose_eq.position.z,
+                         msg.pose_eq.orientation.x, msg.pose_eq.orientation.y,
+                         msg.pose_eq.orientation.z, msg.pose_eq.orientation.w]
+        self.ee_vel = [msg.twist.linear.x, msg.twist.linear.y, msg.twist.linear.z,
+                       msg.twist.angular.x, msg.twist.angular.y, msg.twist.angular.z]
+        self.ee_acc = [msg.accel.linear.x, msg.accel.linear.y, msg.accel.linear.z,
+                       msg.accel.angular.x, msg.accel.angular.y, msg.accel.angular.z]
+        self.int_force = [msg.wrench.force.x, msg.wrench.force.y, msg.wrench.force.z,
+                          msg.wrench.torque.x, msg.wrench.torque.y, msg.wrench.torque.z]
+        self.stiffness = list(msg.stiffness.data)
+        self.user_intent = [msg.user_intent]
 
     # Services Handlers - init, start, stop
     def handle_init_logger(self, req):
@@ -184,7 +233,7 @@ class SyncDataLogger:
         while elapsed_time < self.cycle_time:
             elapsed_time = time.time() - start_time_point
 
-    def sync_log(self):
+    def _sync_log(self):
         # if self.data_group is None:
             # rospy.logwarn("Data Group is not initialized. Skipping message processing")
 
@@ -234,6 +283,60 @@ class SyncDataLogger:
                         rospy.logerr("Failed to access or create dataset: {}. Error: {}".format(dataset_name, e))
             else:
                 rospy.loginfo("Logging has not been initiated")
+
+    def sync_log(self):
+        # if self.data_group is None:
+            # rospy.logwarn("Data Group is not initialized. Skipping message processing")
+
+        if self.start_time is not None:
+            elapsed_time = time.time() - self.start_time
+            if self.data_group:
+                for index, topic_name in enumerate(self.dataset_items):
+                    dataset_name = topic_name.replace('/', '_').lstrip('_')
+                    if index == 0:
+                        data_to_append = [elapsed_time] + self.curr_joint_states
+                    elif index == 1:
+                        data_to_append = [elapsed_time] + self.desired_joint_states
+                    elif index == 2:
+                        data_to_append = [elapsed_time] + self.desired_ee_pose
+                    elif index == 3:
+                        data_to_append = [elapsed_time] + self.curr_ee_pose
+                    elif index == 4:
+                        data_to_append = [elapsed_time] + self.ee_vel
+                    elif index == 5:
+                        data_to_append = [elapsed_time] + self.ee_acc
+                    elif index == 6:
+                        data_to_append = [elapsed_time] + self.int_force
+                    elif index == 7:
+                        data_to_append = [elapsed_time] + self.ref_pose
+                    elif index == 8:
+                        data_to_append = [elapsed_time] + self.prev_targets
+                    elif index == 9:
+                        data_to_append = [elapsed_time] + self.curr_targets
+                    elif index == 10:
+                        data_to_append = [elapsed_time] + self.stiffness
+                    elif index == 11:
+                        data_to_append = [elapsed_time] + self.user_intent
+
+                    try:
+                    # Check if the dataset exists, if so, append, otherwise create
+                        if dataset_name in self.data_group:
+                            # Append to the dataset
+                            dataset = self.data_group[dataset_name]
+                            dataset.resize((dataset.shape[0] + 1, len(data_to_append)))
+                            dataset[-1] = data_to_append
+                        else:
+                            # Create a new dataset
+                            try:
+                                self.data_group.create_dataset(dataset_name, data=[data_to_append],
+                                                               maxshape=(None, len(data_to_append)), chunks=True)
+                            except ValueError as ve:
+                                rospy.logerr(f"Failed to create dataset {dataset_name}: {ve}")
+                    except KeyError as e:
+                        rospy.logerr("Failed to access or create dataset: {}. Error: {}".format(dataset_name, e))
+            else:
+                rospy.loginfo("Logging has not been initiated")
+
 
     def main(self):
         rospy.init_node('trial_data_logger')
