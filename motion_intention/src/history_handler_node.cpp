@@ -6,6 +6,7 @@
 #include "std_msgs/Float64MultiArray.h"
 #include "std_msgs/MultiArrayDimension.h"
 #include "motion_intention/HistoryStamped.h"
+#include <motion_intention/AdmitStateStamped.h>
 #include "motion_intention/SetInt.h"
 #include <sstream>
 #include <Eigen/Dense>
