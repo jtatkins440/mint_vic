@@ -1,0 +1,7 @@
+<launch>
+	<include file="$(find iiwa_gazebo)/launch/iiwa_gazebo.launch"/>
+	<include file="$(find admittance_control)/launch/admittance_control.launch"/>
+	<include file="$(find motion_intention)/launch/motion_intent.launch"/>
+	<include file="$(find trial_data_logger)/launch/data_logger.launch"/>
+	<!-- <remap from="/iiwa/new_joint_angles" to="/iiwa/PositionController/command"/> -->
+</launch>
