@@ -7,11 +7,14 @@ import matplotlib.pyplot as plt
 from visualizer_py.srv import *
 from scipy import interpolate
 from geometry_msgs.msg import PoseStamped
+from motion_intention.msg import AdmitStateStamped
 
 # Global variables
 targetXYold = np.zeros(2)
 targetXY = np.zeros(2)
 endEffectorXY = np.array([[0.0], [0.0]])
+endEffectorEQ = np.array([[0.0], [0.0]])
+
 # targets = np.zeros((6, 2))
 initial_pose = np.array([0.0,-0.4231, 0.7589])
 
@@ -45,6 +48,12 @@ def endEffectorXY_callback(msg):
     abs_pose = np.array([current_pose_msg.x, current_pose_msg.y, current_pose_msg.z]) - initial_pose
     endEffectorXY[0][0] = abs_pose[2]
     endEffectorXY[1][0] = abs_pose[0]
+
+    current_pose_eq_msg = msg.pose_eq.position
+    abs_pose_eq = np.array([current_pose_eq_msg.x, current_pose_eq_msg.y, current_pose_eq_msg.z]) - initial_pose
+    endEffectorEQ[0][0] = abs_pose_eq[2]
+    endEffectorEQ[1][0] = abs_pose_eq[0]
+
 '''
 def targets_callback(msg):
     global targets
@@ -78,6 +87,9 @@ def visualize():
 
     # Draw end effector
     plt.scatter(endEffectorXY[0][0], endEffectorXY[1][0], s=50, c='red')
+
+    # Draw end effector
+    plt.scatter(endEffectorEQ[0][0], endEffectorEQ[1][0], s=50, c='green')
     
     # Prepare and evaluate the spline
     if len(targets) > 1:
@@ -95,7 +107,7 @@ def main():
     service = rospy.Service('update_targets', UpdateTargets, update_targets)
     rospy.Subscriber('/PreviousTargets', Float64MultiArray, targetXYold_callback)
     rospy.Subscriber('/CurrentTargets', Float64MultiArray, targetXY_callback)
-    rospy.Subscriber('/iiwa/ee_pose', PoseStamped, endEffectorXY_callback)
+    rospy.Subscriber('/iiwa/admit_state', AdmitStateStamped, endEffectorXY_callback)
     # rospy.Subscriber('/iiwa/j6_pose_custom', Float64MultiArray, endEffectorXY_callback) # --> For simulation
     # rospy.Subscriber('/TrialTargets', Float64MultiArray, targets_callback)
     # Initialize the service

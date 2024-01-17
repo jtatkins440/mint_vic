@@ -59,6 +59,7 @@ find_package(iir REQUIRED) # for filtering the inputs to the mintnet
  add_message_files(
    FILES
    HistoryStamped.msg
+   AdmitStateStamped.msg
 #   Message2.msg
  )
 
@@ -80,6 +81,7 @@ add_service_files(
 generate_messages(
    DEPENDENCIES
    std_msgs
+   geometry_msgs
  )
 
 ################################################

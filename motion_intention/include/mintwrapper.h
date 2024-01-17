@@ -4,8 +4,8 @@
 #include <chrono>
 #include "spline.h"
 
-using json = nlohmann::json;
-using namespace torch::indexing;
+//using json = nlohmann::json;
+//using namespace torch::indexing;
 
 #include "circle.h"
 #include "circleutils.h"
@@ -109,9 +109,9 @@ class MIntWrapper{
 		
 		// read in json and initalize parameters
 		std::ifstream f(param_path);
-		params = json::parse(f);
-		json data_helper = params["helper_params"];
-		json data_model = params["mdl_params"];
+		params = nlohmann::json::parse(f);
+		nlohmann::json data_helper = params["helper_params"];
+		nlohmann::json data_model = params["mdl_params"];
 		input_chn_size = int(data_model["input_size"]);
 		output_chn_size = int(data_model["output_size"]);
 		input_seq_length = int(data_helper["input_sequence_length"]);
@@ -141,7 +141,7 @@ class MIntWrapper{
 
 		for (int i = 0; i < output_chn_size; i++) {
 		  for (int j = 0; j < output_seq_length; j++) {
-		    output_scaling_array(i, j) = 1.0 / output_scalers[i];
+		    output_scaling_array(i, j) = output_scalers[i];
 		  }
 		}
 		
@@ -188,7 +188,7 @@ class MIntWrapper{
 	private:
 	std::string mint_path;
 	std::string param_path;
-	json params;
+	nlohmann::json params;
 	Eigen::ArrayXXf input_scaling_array;
 	Eigen::ArrayXXf output_scaling_array;
 	torch::jit::script::Module mint_module;
@@ -209,7 +209,7 @@ Eigen::ArrayXXf MIntWrapper::forward_(Eigen::ArrayXXf input)
 	input = input * input_scaling_array;
 	
 	// convert input Eigen array to Tensor
-	input_t = input_t.index_put_({Slice(None, input_chn_size, input_seq_length)}, torch::from_blob(input.data(), {input_chn_size, input_seq_length}).clone());
+	input_t = input_t.index_put_({torch::indexing::Slice(torch::indexing::None, input_chn_size, input_seq_length)}, torch::from_blob(input.data(), {input_chn_size, input_seq_length}).clone());
   
 	// clear out IValue vector and fill with new input
 	input_v.clear();
@@ -219,7 +219,7 @@ Eigen::ArrayXXf MIntWrapper::forward_(Eigen::ArrayXXf input)
 	output_v = mint_module.forward(input_v);
 
 	// IValue to Tensor
-	output_t = output_v.toTensor().index({Slice(None, output_chn_size, output_seq_length)}); 
+	output_t = output_v.toTensor().index({torch::indexing::Slice(torch::indexing::None, output_chn_size, output_seq_length)}); 
 
 	// Tensor to flat float vector
 	std::vector<float> v(output_t.data_ptr<float>(), output_t.data_ptr<float>() + output_t.numel()); 
@@ -280,7 +280,7 @@ Eigen::ArrayXf MIntWrapper::getEquilibriumPoint()
 class LineFitWrapper{
 	public:
 
-	json params;
+	nlohmann::json params;
 	std::string param_path;
 	int input_chn_size;
 	int output_chn_size;
@@ -300,9 +300,9 @@ class LineFitWrapper{
 
 	LineFitWrapper(std::string json_path) : param_path(json_path) {
 		std::ifstream f(param_path);
-		params = json::parse(f);
-		json data_helper = params["helper_params"];
-		json data_model = params["mdl_params"];
+		params = nlohmann::json::parse(f);
+		nlohmann::json data_helper = params["helper_params"];
+		nlohmann::json data_model = params["mdl_params"];
 		input_chn_size = int(data_model["input_size"]);
 		output_chn_size = int(data_model["output_size"]);
 		input_seq_length = int(data_helper["input_sequence_length"]);
@@ -393,9 +393,9 @@ class CircleFitWrapper{
 
 	CircleFitWrapper(std::string json_path) : param_path(json_path) {
 		std::ifstream f(param_path);
-		params = json::parse(f);
-		json data_helper = params["helper_params"];
-		json data_model = params["mdl_params"];
+		params = nlohmann::json::parse(f);
+		nlohmann::json data_helper = params["helper_params"];
+		nlohmann::json data_model = params["mdl_params"];
 		input_chn_size = int(data_model["input_size"]);
 		output_chn_size = int(data_model["output_size"]);
 		input_seq_length = int(data_helper["input_sequence_length"]);
@@ -459,7 +459,7 @@ class CircleFitWrapper{
 	
 	private:
 	std::string param_path;
-	json params;
+	nlohmann::json params;
 	int input_chn_size;
 	int output_chn_size;
 	int input_seq_length;

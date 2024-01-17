@@ -3,6 +3,5 @@
 	<include file="$(find admittance_control)/launch/admittance_control.launch"/>
 	<include file="$(find motion_intention)/launch/motion_intent.launch"/>
 	<include file="$(find trial_data_logger)/launch/data_logger.launch"/>
-	<node name="SimSubject" pkg="protocol_handler" type="subject_sim.py"/>
 	<!-- <remap from="/iiwa/new_joint_angles" to="/iiwa/PositionController/command"/> -->
 </launch>

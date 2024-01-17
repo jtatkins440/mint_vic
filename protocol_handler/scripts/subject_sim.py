@@ -8,6 +8,8 @@ import tf # for tf.transformations.quaternion_from_euler(*self.curr_j6_pose[3:])
 import numpy as np
 from std_msgs.msg import Float64MultiArray
 import math
+from motion_intention.msg import AdmitStateStamped
+
 
 class SubjectSimPublisher:
 	def __init__(self):
@@ -22,7 +24,8 @@ class SubjectSimPublisher:
 		self.position_tol = 0.01
 		self.orientation_tol = 0.2
 
-		self.fk_sub = rospy.Subscriber("/iiwa/j6_pose_custom", Float64MultiArray, self.updateCurrentPose)
+		#self.fk_sub = rospy.Subscriber("/iiwa/j6_pose_custom", Float64MultiArray, self.updateCurrentPose)
+		self.fk_sub = rospy.Subscriber("/iiwa/admit_state", AdmitStateStamped, self.updateCurrentState)
 		self.target_sub = rospy.Subscriber("/CurrentTargets", Float64MultiArray, self.updateCurrentTarget)
 		self.initial_pose = np.array([0.0, -0.4231, 0.7589])
 		self.current_pose_msg = np.array([0.0, 0.0, 0.0])  #np.array([0.0, -0.4231, 0.7589, 0.0, 0.0, 0.0]) #PoseStamped()
@@ -39,9 +42,9 @@ class SubjectSimPublisher:
 		self.hold_idx_count = int(self.hold_time / self.dt)
 
 		# control gains
-		self.P_gain = 20.0
-		self.D_gain = 1.0
-		self.I_gain = 0.5
+		self.P_gain = 40.0
+		self.D_gain = 1.0 #0.1
+		self.I_gain = 0.0 #10.5
 
 		self.error_vec = np.zeros_like(self.origin_position)
 		self.error_integral_vec = np.zeros_like(self.origin_position)
@@ -60,18 +63,24 @@ class SubjectSimPublisher:
 		self.current_pose_msg = data.data
 		return
 
+	def updateCurrentState(self, msg):
+		pose_msg = msg.pose
+		self.current_pose_msg = [pose_msg.position.x, pose_msg.position.y, pose_msg.position.z]
+		return
+
 	#def updateCurrentPose(self, data):
 	#	self.current_pose_msg = [data.pose.position.x, data.pose.position.y, data.pose.position.z]
 	#	return
 
 	# it's inefficient to make a new array every call. change when there's more time.
 	def getCurrentPosition(self, as_array = False):
-		if (as_array):
-			abs_pose = np.array([self.current_pose_msg[0], self.current_pose_msg[1], self.current_pose_msg[2]]) - self.initial_pose
-			rel_pose = np.array([abs_pose[2], abs_pose[1], -abs_pose[0]])
-			return rel_pose #np.array([self.current_pose_msg[0], self.current_pose_msg[1], self.current_pose_msg[2]]) - self.initial_pose
-		else:
-			return [self.current_pose_msg[0], self.current_pose_msg[1], self.current_pose_msg[2]]
+		#if (as_array):
+		abs_pose = np.array([self.current_pose_msg[0], self.current_pose_msg[1], self.current_pose_msg[2]]) - self.initial_pose
+		#rel_pose = np.array([abs_pose[2], abs_pose[1], -abs_pose[0]])
+		rel_pose = np.array([abs_pose[2], abs_pose[1], -abs_pose[0]])
+		return rel_pose #np.array([self.current_pose_msg[0], self.current_pose_msg[1], self.current_pose_msg[2]]) - self.initial_pose
+		#else:
+		#	return [self.current_pose_msg[0], self.current_pose_msg[1], self.current_pose_msg[2]]
 
 	def updateCurrentTarget(self, data):
 		self.current_target_msg = data.data
@@ -79,7 +88,8 @@ class SubjectSimPublisher:
 
 	def getCurrentTarget(self, as_array = False):
 		if (as_array):
-			return np.array([self.current_target_msg[0], self.current_pose_msg[1], self.current_target_msg[1]])
+			return np.array([self.current_target_msg[0], self.current_pose_msg[1], -self.current_target_msg[1]])
+			#return np.array([self.current_target_msg[1], self.current_pose_msg[1], self.current_target_msg[0]])
 		else:
 			return [self.current_target_msg[0], self.current_pose_msg[1], self.current_target_msg[1]]
 
@@ -96,7 +106,8 @@ class SubjectSimPublisher:
 	def publish_handler(self, force):
 		self.msg = self.top_type()
 		self.msg.wrench.force.x = force[2]
-		self.msg.wrench.force.y = force[0] # this indexing is intentional and basically converts the frame to be relative to the force sensor and not the base frame
+		self.msg.wrench.force.y = force[0]
+		#elf.msg.wrench.force.z = force[0] # this indexing is intentional and basically converts the frame to be relative to the force sensor and not the base frame
 		#self.msg.wrench.force.x = force[0]
 		#self.msg.wrench.force.z = force[2]
 		self.msg.header.stamp = rospy.Time.now()
