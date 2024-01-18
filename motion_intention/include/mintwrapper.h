@@ -11,6 +11,9 @@ using namespace torch::indexing;
 #include "circleutils.h"
 #include "circlefit.h"
 
+// TODO
+// make a struct for outputting the line, circle, and input/output info, make that struct a message and publish it
+
 class MIntSpline{
 	public:
 	MIntSpline(){};
@@ -184,6 +187,8 @@ class MIntWrapper{
 	int output_chn_size;
 	int input_seq_length;
 	int output_seq_length;
+	Eigen::ArrayXXf getInputArray();
+	Eigen::ArrayXXf getOutputArray();
 
 	private:
 	std::string mint_path;
@@ -199,6 +204,7 @@ class MIntWrapper{
     Eigen::ArrayXXf input_a;
 	Eigen::ArrayXXf output_a;
     Eigen::ArrayXXf forward_(Eigen::ArrayXXf input);
+	
 	MIntSpline mintspline;
 };
 
@@ -275,6 +281,19 @@ Eigen::ArrayXf MIntWrapper::getEquilibriumPoint()
 {
 	return mintspline.sampleEquilibriumPoint();
 };
+
+Eigen::ArrayXXf MIntWrapper::getInputArray(){
+	Eigen::ArrayXXf returned_input = input_a;
+	return returned_input;
+};
+
+// call after forward
+Eigen::ArrayXXf MIntWrapper::getOutputArray(){
+	Eigen::ArrayXXf returned_output = output_a;
+	return returned_output;
+};
+
+
 
 // LineFitWrapper expects to be passed the current state as a [position; velocity] vector and the input as a 2x125 array of 
 class LineFitWrapper{
