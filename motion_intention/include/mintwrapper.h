@@ -13,6 +13,35 @@ using namespace torch::indexing;
 
 // TODO
 // make a struct for outputting the line, circle, and input/output info, make that struct a message and publish it
+struct MIntNetIO{
+	int input_seq_length;
+	std::vector<double> input_times;
+	std::vector<std::vector<double>> input_vel; // sequence of input velocity vectors
+	std::vector<std::vector<double>> input_acc; // sequence of output acceleration vectors
+
+	int output_seq_length;
+	std::vector<double> output_times; // time index for each output_dp[i] vector
+	std::vector<std::vector<double>> output_dpos; // sequence of output differential position vectors
+};
+
+struct LineFitIO{
+	int input_seq_length;
+	std::vector<double> input_times;
+	std::vector<std::vector<double>> input_pos; // sequence of input position vectors
+
+	int output_dim;
+	std::vector<std::vector<double>> output_intercept;
+	std::vector<std::vector<double>> output_slope;
+};
+
+struct CircleFitIO{
+	int input_seq_length;
+	std::vector<double> input_times;
+	std::vector<std::vector<double>> input_pos; // sequence of input position vectors
+
+	std::vector<double> circle_center; // [circle.a, circle.b] for (x,y) center of circle
+	double circle_radius;
+};
 
 class MIntSpline{
 	public:
@@ -171,6 +200,7 @@ class MIntWrapper{
 
 		mintspline = MIntSpline(time_vec, output_chn_size, eq_lead_time);
 
+		io_struct = MIntNetIO();
 		// finished
 		std::cout << "MIntWrapper Initalized!" << std::endl;
 	}
@@ -182,6 +212,8 @@ class MIntWrapper{
 	// main two functions that need to be implimented in every MIntWrapper variation are fit() and getEquilibriumPoint()
 	void fit(Eigen::ArrayXf current_state, std::deque<Eigen::ArrayXf> input);
 	void fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input);
+	MIntNetIO io_struct;
+	MIntNetIO getIOStruct(); // getter function for the inputs and outputs
 	Eigen::ArrayXf getEquilibriumPoint();
 	int input_chn_size;
 	int output_chn_size;
@@ -212,6 +244,7 @@ class MIntWrapper{
 Eigen::ArrayXXf MIntWrapper::forward_(Eigen::ArrayXXf input)
 {
 	// scale the input array
+	input_a = input;
 	input = input * input_scaling_array;
 	
 	// convert input Eigen array to Tensor
