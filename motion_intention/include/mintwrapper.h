@@ -22,6 +22,23 @@ struct MIntNetIO{
 	int output_seq_length;
 	std::vector<double> output_times; // time index for each output_dp[i] vector
 	std::vector<std::vector<double>> output_dpos; // sequence of output differential position vectors
+
+	// constructor
+	MIntNetIO(int input_seq_length_,
+	std::vector<double> input_times_,
+	sstd::vector<std::vector<double>> input_vel_,
+	std::vector<std::vector<double>> input_acc_,
+	int output_seq_length_,
+	std::vector<double> output_times_,
+	std::vector<std::vector<double>> output_dpos_){
+		input_seq_length = input_seq_length_;
+		input_times = input_times_;
+		input_vel = input_vel_;
+		input_acc = input_acc_;
+		output_seq_length = output_seq_length_;
+		output_times = output_times_;
+		output_dpos = output_dpos_;
+	};
 };
 
 struct LineFitIO{
@@ -32,6 +49,21 @@ struct LineFitIO{
 	int output_dim;
 	std::vector<std::vector<double>> output_intercept;
 	std::vector<std::vector<double>> output_slope;
+	
+	// constructor
+	LineFitIO(int input_seq_length_,
+	std::vector<double> input_times_,
+	std::vector<std::vector<double>> input_pos_,
+	int output_dim_,
+	std::vector<std::vector<double>> output_intercept_,
+	std::vector<std::vector<double>> output_slope_){
+		input_seq_length = input_seq_length_;
+		input_times = input_times_;
+		input_pos = input_pos_;
+		output_dim = output_dim_;
+		output_intercept = output_intercept_;
+		output_slope = output_slope_;
+	}
 };
 
 struct CircleFitIO{
@@ -41,6 +73,19 @@ struct CircleFitIO{
 
 	std::vector<double> circle_center; // [circle.a, circle.b] for (x,y) center of circle
 	double circle_radius;
+
+	// constructor
+	CircleFitIO(int input_seq_length_,
+	std::vector<double> input_times_,
+	std::vector<std::vector<double>> input_pos_,
+	std::vector<double> circle_center_,
+	double circle_radius_){
+		input_seq_length = input_seq_length_;
+		input_times = input_times_;
+		input_pos = input_pos_,;
+		circle_center = circle_center_;
+		circle_radius = circle_radius_;
+	}
 };
 
 class MIntSpline{
@@ -347,6 +392,7 @@ class LineFitWrapper{
 	std::chrono::time_point<std::chrono::steady_clock> timer_start;
 	Eigen::MatrixXf A;
 	Eigen::MatrixXf b_coeffs;
+	LineFitIO io_struct;
 
 	LineFitWrapper(){};
 
@@ -384,11 +430,28 @@ class LineFitWrapper{
 		b_coeffs << 0.0, 0.0, 
 					0.0, 0.0; // rows should be [b_0; b_1], cols should be dims [x, y];
 		
+		io_struct = LineFitIO();
+
 		timer_start = std::chrono::steady_clock::now();
 	};
 
 	//void fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input);
 	//Eigen::ArrayXf getEquilibriumPoint();
+
+	/*
+	struct LineFitIO{
+	int input_seq_length;
+	std::vector<double> input_times;
+	std::vector<std::vector<double>> input_pos; // sequence of input position vectors
+
+	int output_dim;
+	std::vector<std::vector<double>> output_intercept;
+	std::vector<std::vector<double>> output_slope;
+	};*/
+	LineFitIO getIOStruct(){
+		input_seq_length = int(data_helper["input_sequence_length"]);
+		io_struct = {.input_seq_length = input_seq_length, }; // update this
+	};
 
 	void fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input){
 		// current state is ignored, only here because of compatibility with ROS wrapper
@@ -465,6 +528,7 @@ class CircleFitWrapper{
 		//Eigen::MatrixXf x_eq(output_chn_size);
 		x_eq = Eigen::MatrixXf::Zero(output_chn_size, 1);
 		Circle circle;
+		io_struct = CircleFitIO();
 
 		timer_start = std::chrono::steady_clock::now();
 	};
@@ -472,6 +536,11 @@ class CircleFitWrapper{
 	//void fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input);
 	//Eigen::ArrayXf getEquilibriumPoint();
 	Circle circle;
+	CircleFitIO io_struct;
+
+	CircleFitIO getIOStruct(){
+
+	};
 
 	// UPDATE
 	void fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input){
