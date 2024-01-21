@@ -23,10 +23,11 @@ struct MIntNetIO{
 	std::vector<double> output_times; // time index for each output_dp[i] vector
 	std::vector<std::vector<double>> output_dpos; // sequence of output differential position vectors
 
+	MIntNetIO(){};
 	// constructor
 	MIntNetIO(int input_seq_length_,
 	std::vector<double> input_times_,
-	sstd::vector<std::vector<double>> input_vel_,
+	std::vector<std::vector<double>> input_vel_,
 	std::vector<std::vector<double>> input_acc_,
 	int output_seq_length_,
 	std::vector<double> output_times_,
@@ -50,6 +51,7 @@ struct LineFitIO{
 	std::vector<std::vector<double>> output_intercept;
 	std::vector<std::vector<double>> output_slope;
 	
+	LineFitIO(){};
 	// constructor
 	LineFitIO(int input_seq_length_,
 	std::vector<double> input_times_,
@@ -74,6 +76,7 @@ struct CircleFitIO{
 	std::vector<double> circle_center; // [circle.a, circle.b] for (x,y) center of circle
 	double circle_radius;
 
+	CircleFitIO(){};
 	// constructor
 	CircleFitIO(int input_seq_length_,
 	std::vector<double> input_times_,
@@ -82,7 +85,7 @@ struct CircleFitIO{
 	double circle_radius_){
 		input_seq_length = input_seq_length_;
 		input_times = input_times_;
-		input_pos = input_pos_,;
+		input_pos = input_pos_;
 		circle_center = circle_center_;
 		circle_radius = circle_radius_;
 	}
@@ -449,8 +452,9 @@ class LineFitWrapper{
 	std::vector<std::vector<double>> output_slope;
 	};*/
 	LineFitIO getIOStruct(){
-		input_seq_length = int(data_helper["input_sequence_length"]);
-		io_struct = {.input_seq_length = input_seq_length, }; // update this
+		//input_seq_length = int(data_helper["input_sequence_length"]);
+		io_struct = LineFitIO(); //{.input_seq_length = input_seq_length}; // update this
+		return io_struct;
 	};
 
 	void fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input){
