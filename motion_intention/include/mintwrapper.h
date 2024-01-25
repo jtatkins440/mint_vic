@@ -48,8 +48,8 @@ struct LineFitIO{
 	std::vector<std::vector<double>> input_pos; // sequence of input position vectors
 
 	int output_dim;
-	std::vector<std::vector<double>> output_intercept;
-	std::vector<std::vector<double>> output_slope;
+	std::vector<double> output_intercept;
+	std::vector<double> output_slope;
 	
 	LineFitIO(){};
 	// constructor
@@ -57,8 +57,8 @@ struct LineFitIO{
 	std::vector<double> input_times_,
 	std::vector<std::vector<double>> input_pos_,
 	int output_dim_,
-	std::vector<std::vector<double>> output_intercept_,
-	std::vector<std::vector<double>> output_slope_){
+	std::vector<double> output_intercept_,
+	std::vector<double> output_slope_){
 		input_seq_length = input_seq_length_;
 		input_times = input_times_;
 		input_pos = input_pos_;
@@ -73,6 +73,7 @@ struct CircleFitIO{
 	std::vector<double> input_times;
 	std::vector<std::vector<double>> input_pos; // sequence of input position vectors
 
+	int output_dim;
 	std::vector<double> circle_center; // [circle.a, circle.b] for (x,y) center of circle
 	double circle_radius;
 
@@ -81,14 +82,16 @@ struct CircleFitIO{
 	CircleFitIO(int input_seq_length_,
 	std::vector<double> input_times_,
 	std::vector<std::vector<double>> input_pos_,
+	int output_dim_,
 	std::vector<double> circle_center_,
 	double circle_radius_){
 		input_seq_length = input_seq_length_;
 		input_times = input_times_;
 		input_pos = input_pos_;
+		output_dim = output_dim_;
 		circle_center = circle_center_;
 		circle_radius = circle_radius_;
-	}
+	};
 };
 
 class MIntSpline{
@@ -197,7 +200,7 @@ class MIntWrapper{
 		input_seq_length = int(data_helper["input_sequence_length"]);
 		output_seq_length = int(data_model["M"]) * int(data_model["G"]);
 		eq_lead_time = (double) data_helper["lead_time"];
-		
+		model_dim = int(data_helper["dim"]);
 		// unpack scaling values
 		std::vector<float> input_scalers;
 		for (int i = 0; i < input_chn_size; i++) {
@@ -234,19 +237,26 @@ class MIntWrapper{
 			return ;
 		}
 		
-    		input_a = Eigen::ArrayXXf::Ones(input_chn_size, input_seq_length);
-      		output_a = Eigen::ArrayXXf::Ones(output_chn_size, output_seq_length);
+		input_a = Eigen::ArrayXXf::Ones(input_chn_size, input_seq_length);
+		output_a = Eigen::ArrayXXf::Ones(output_chn_size, output_seq_length);
 
 		// initialize I/O tensors
 		input_t = torch::randn({1, input_chn_size, input_seq_length});
 		output_t = torch::randn({1, output_chn_size, output_seq_length});
 		
-		std::vector<double> time_vec;
-		for (int i = 0; i < output_seq_length; i++) {
-			time_vec.push_back(data_helper["output_times"][i]);
+		double dt = (double) data_helper["dt"];
+		input_time_vec.clear();
+		for (int i = 0; i < input_seq_length; i++) {
+			double time_point = -((double)(input_seq_length - i - 1)) * dt;
+			input_time_vec.push_back(time_point);
 		}
 
-		mintspline = MIntSpline(time_vec, output_chn_size, eq_lead_time);
+		output_time_vec.clear();
+		for (int i = 0; i < output_seq_length; i++) {
+			output_time_vec.push_back(data_helper["output_times"][i]);
+		}
+
+		mintspline = MIntSpline(output_time_vec, output_chn_size, eq_lead_time);
 
 		io_struct = MIntNetIO();
 		// finished
@@ -267,6 +277,9 @@ class MIntWrapper{
 	int output_chn_size;
 	int input_seq_length;
 	int output_seq_length;
+	int model_dim;
+	std::vector<double> output_time_vec;
+	std::vector<double> input_time_vec;
 	Eigen::ArrayXXf getInputArray();
 	Eigen::ArrayXXf getOutputArray();
 
@@ -287,7 +300,6 @@ class MIntWrapper{
 	
 	MIntSpline mintspline;
 };
-
 
 Eigen::ArrayXXf MIntWrapper::forward_(Eigen::ArrayXXf input)
 {
@@ -374,7 +386,54 @@ Eigen::ArrayXXf MIntWrapper::getOutputArray(){
 	return returned_output;
 };
 
+/*
+io_struct = MIntNetIO(int input_seq_length_,
+	std::vector<double> input_times_,
+	std::vector<std::vector<double>> input_vel_,
+	std::vector<std::vector<double>> input_acc_,
+	int output_seq_length_,
+	std::vector<double> output_times_,
+	std::vector<std::vector<double>> output_dpos_);
+*/
+MIntNetIO MIntWrapper::getIOStruct(){
+	std::vector<std::vector<double>> input_vel;
+	std::vector<std::vector<double>> input_acc;
+	std::vector<std::vector<double>> output_dpos;
 
+	Eigen::ArrayXXf inputs = getInputArray();
+	
+	std::vector<double> vel;
+	std::vector<double> acc;
+	for (int col = 0; col < inputs.cols(); col++){
+		for (int row = 0; row < model_dim; row++){
+			vel.push_back(inputs(row, col));
+			acc.push_back(inputs(row + model_dim, col));
+		}
+		input_vel.push_back(vel);
+		input_acc.push_back(acc);
+		vel.clear(); 
+		acc.clear();
+	}
+
+	std::vector<double> dpos;
+	Eigen::ArrayXXf outputs = getOutputArray();
+	for (int col = 0; col < outputs.cols(); col++){
+		for (int row = 0; row < model_dim; row++){
+			dpos.push_back(outputs(row, col));
+		}
+		output_dpos.push_back(dpos);
+		dpos.clear();
+	}
+
+	io_struct = MIntNetIO(input_seq_length,
+						input_time_vec,
+						input_vel,
+						input_acc,
+						output_seq_length,
+						output_time_vec,
+						output_dpos);
+	return io_struct;
+};
 
 // LineFitWrapper expects to be passed the current state as a [position; velocity] vector and the input as a 2x125 array of 
 class LineFitWrapper{
@@ -396,6 +455,7 @@ class LineFitWrapper{
 	Eigen::MatrixXf A;
 	Eigen::MatrixXf b_coeffs;
 	LineFitIO io_struct;
+	Eigen::MatrixXf Y_copy;
 
 	LineFitWrapper(){};
 
@@ -412,6 +472,7 @@ class LineFitWrapper{
 		time_scalar = (float) data_helper["linear_lead_time_scalar"];
 		trim_seq_length = (int) data_helper["input_sequence_trim_length"];
 		dt = (float) data_helper["dt"];
+		model_order = int(data_helper["dim"]);
 
 		used_seq_length = input_seq_length - trim_seq_length; // probably should check if non-positive
 
@@ -428,7 +489,8 @@ class LineFitWrapper{
 		//A_QR = A.fullPivHouseholderQR(); // QR decomp of A. to solve matrix eq, just do A_QR.solve(Y) where Y are the 'inputs' or the positions for each dimension.
 		
 		// 
-		model_order = 2; // hardcoding is bad! stop it.
+		Y_copy = Eigen::MatrixXf::Zero(model_order, used_seq_length);
+
 		b_coeffs = Eigen::MatrixXf::Zero(model_order, output_chn_size);
 		b_coeffs << 0.0, 0.0, 
 					0.0, 0.0; // rows should be [b_0; b_1], cols should be dims [x, y];
@@ -442,24 +504,58 @@ class LineFitWrapper{
 	//Eigen::ArrayXf getEquilibriumPoint();
 
 	/*
-	struct LineFitIO{
-	int input_seq_length;
-	std::vector<double> input_times;
-	std::vector<std::vector<double>> input_pos; // sequence of input position vectors
+	LineFitIO(int input_seq_length_,
+	std::vector<double> input_times_,
+	std::vector<std::vector<double>> input_pos_,
+	int output_dim_,
+	std::vector<std::vector<double>> output_intercept_,
+	std::vector<std::vector<double>> output_slope_)
+	std::vector<std::vector<double>> output_slope_
+	*/
 
-	int output_dim;
-	std::vector<std::vector<double>> output_intercept;
-	std::vector<std::vector<double>> output_slope;
-	};*/
+	/*
+	b_coeffs = Eigen::MatrixXf::Zero(model_order, output_chn_size);
+	b_coeffs << 0.0, 0.0, 
+				0.0, 0.0; // rows should be [b_0; b_1], cols should be dims [x, y];
+	*/
 	LineFitIO getIOStruct(){
-		//input_seq_length = int(data_helper["input_sequence_length"]);
-		io_struct = LineFitIO(); //{.input_seq_length = input_seq_length}; // update this
+		std::vector<double> output_intercept;
+		std::vector<double> output_slope;
+
+		for (int dim = 0; dim < model_order; dim++){
+			output_intercept.push_back(b_coeffs(0, dim));
+			output_slope.push_back(b_coeffs(1, dim));
+		}
+		
+		std::vector<double> input_times;
+		for (int row = 0; row < used_seq_length; row++){
+			input_times.push_back((double) A(row, 1)); //-((float)(used_seq_length - row - 1)) * dt;
+		}
+
+		std::vector<std::vector<double>> input_pos;
+		std::vector<double> pos;
+		for (int col = 0; col < Y_copy.cols(); col++){
+			for (int row = 0; row < model_order; row++){
+				pos.push_back(Y_copy(row, col));
+			}
+		input_pos.push_back(pos);
+		pos.clear(); 
+		}
+		
+		io_struct = LineFitIO(used_seq_length,
+						input_times,
+						input_pos,
+						output_chn_size,
+						output_intercept,
+						output_slope);
 		return io_struct;
 	};
 
 	void fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input){
 		// current state is ignored, only here because of compatibility with ROS wrapper
 		// input is assumed to be 2x125 of [p_x, p_y] values.
+		Y_copy = input.bottomRightCorner(model_order, used_seq_length);
+
 		Eigen::MatrixXf Y_full = input.matrix().bottomRightCorner(input.rows(), used_seq_length).transpose();
 
 		
@@ -534,6 +630,11 @@ class CircleFitWrapper{
 		Circle circle;
 		io_struct = CircleFitIO();
 
+		
+		for (int row = 0; row < used_seq_length; row++){
+			input_times.push_back(-((double)(used_seq_length - row - 1)) * dt);
+		}
+
 		timer_start = std::chrono::steady_clock::now();
 	};
 
@@ -541,9 +642,36 @@ class CircleFitWrapper{
 	//Eigen::ArrayXf getEquilibriumPoint();
 	Circle circle;
 	CircleFitIO io_struct;
+	std::vector<double> x_vec;
+	std::vector<double> y_vec;
+	std::vector<double> input_times;
+	/*
+	CircleFitIO(int input_seq_length_,
+	std::vector<double> input_times_,
+	std::vector<std::vector<double>> input_pos_,
+	std::vector<double> circle_center_,
+	double circle_radius_)
+	*/
 
 	CircleFitIO getIOStruct(){
+		std::vector<std::vector<double>> input_pos;
+		std::vector<double> pos;
+		for (int col = 0; col < used_seq_length; col++){
+			pos.push_back(x_vec[col]);
+			pos.push_back(y_vec[col]);
 
+			input_pos.push_back(pos);
+			pos.clear(); 
+		}
+
+		std::vector<double> circle_center = {circle.a, circle.b};
+		io_struct = CircleFitIO(used_seq_length,
+							input_times,
+							input_pos,
+							output_chn_size,
+							circle_center,
+							(double) circle.r);
+		return io_struct;
 	};
 
 	// UPDATE
@@ -554,9 +682,14 @@ class CircleFitWrapper{
 		int size = used_seq_length; //input.cols();
 		double x_array[size];
 		double y_array[size];
+		x_vec.clear();
+		y_vec.clear();
 		for (int i = 0; i < size; i++){
 			x_array[i] = input(0, i + trim_seq_length); // x_pos
 			y_array[i] = input(1, i + trim_seq_length); // y_pos
+
+			x_vec.push_back(x_array[i]);
+			y_vec.push_back(y_array[i]);
 		}
 
 		CircleData Datafitcircle(size, x_array, y_array);

@@ -3,6 +3,7 @@
 #include "geometry_msgs/PoseStamped.h"
 #include "motion_intention/HistoryStamped.h"
 #include "motion_intention/SetInt.h"
+#include "motion_intention/FullFitIO.h"
 #include <sstream>
 #include "mintwrapper.h"
 #include <iostream>
@@ -26,7 +27,7 @@ class MIntNodeWrapper{
 			//sub = nh.subscribe("/ee_pose", 2, &MIntNodeWrapper::subscriberCallback, this); // assumes it's reading a task_space PoseStamped message
 			sub_hist = nh.subscribe("/ee_history", 2, &MIntNodeWrapper::subscriberHistoryCallback, this); // assumes it's reading a task_space PoseStamped message
 			pub = nh.advertise<geometry_msgs::PoseStamped>("/ee_pose_eq", 2);
-
+			pub_io = nh.advertise<motion_intention::FullFitIO>("/full_fit_io", 2);
 			
 			if (nh.getParam("model_weights_path", model_weights_path)) {
 				std::cout << "Recieved model_weights_path as " << model_weights_path << std::endl;
@@ -65,6 +66,9 @@ class MIntNodeWrapper{
 
 			//Eigen::Array<float, 2 * state_dim, seq_length> input_array;
 			//mint_state_dim = 4;
+			mint_io = MIntNetIO();
+			line_io = LineFitIO();
+			circle_io = CircleFitIO();
 
 			ROS_INFO("mint: MIntNodeWrapper initalized.");
 		};
@@ -75,9 +79,16 @@ class MIntNodeWrapper{
 		void fitHandler();
 		void waitRemainingLoopTime(std::chrono::time_point<std::chrono::steady_clock> start_time, std::chrono::duration<double> desired_duration);
 
+		MIntNetIO mint_io;
+		LineFitIO line_io;
+		CircleFitIO circle_io;
+
+		void publishIO();
+
 		//ros::Subscriber sub;
 		ros::Subscriber sub_hist;
 		ros::Publisher pub;
+		ros::Publisher pub_io;
 		MIntWrapper mintnet;
 		LineFitWrapper mint_line;
 		CircleFitWrapper mint_circ;
@@ -207,6 +218,78 @@ void MIntNodeWrapper::fitHandler(){
 	}
 };
 
+void MIntNodeWrapper::publishIO(){
+	motion_intention::FullFitIO full_fit_io;
+	full_fit_io.header.stamp = ros::Time::now(); 
+	if (b_mint_ready){
+		mint_io = mintnet.getIOStruct();
+		line_io = mint_line.getIOStruct();
+		circle_io = mint_circ.getIOStruct();
+
+		// mint info
+		full_fit_io.mint_input_seq_length = mint_io.input_seq_length;
+		full_fit_io.mint_input_times = mint_io.input_times;
+		std::vector<double> mint_input_vel_x;
+		std::vector<double> mint_input_vel_y;
+		std::vector<double> mint_input_acc_x;
+		std::vector<double> mint_input_acc_y;
+		full_fit_io.mint_output_seq_length = mint_io.output_seq_length;
+		full_fit_io.mint_output_times = mint_io.output_times;
+		std::vector<double> mint_output_dpos_x;
+		std::vector<double> mint_output_dpos_y;
+
+		for (int i = 0; i < mint_io.input_seq_length; i++){
+				mint_input_vel_x.push_back(mint_io.input_vel[i][0]);
+				mint_input_vel_y.push_back(mint_io.input_vel[i][1]);
+				mint_input_acc_x.push_back(mint_io.input_acc[i][0]);
+				mint_input_acc_y.push_back(mint_io.input_acc[i][1]);
+		}
+		for (int i = 0; i < mint_io.output_seq_length; i++){
+				mint_output_dpos_x.push_back(mint_io.output_dpos[i][0]);
+				mint_output_dpos_y.push_back(mint_io.output_dpos[i][1]);
+		}
+		full_fit_io.mint_input_vel_x = mint_input_vel_x;
+		full_fit_io.mint_input_vel_y = mint_input_vel_y;
+		full_fit_io.mint_input_acc_x = mint_input_acc_x;
+		full_fit_io.mint_input_acc_y = mint_input_acc_y;
+		full_fit_io.mint_output_dpos_x = mint_output_dpos_x;
+		full_fit_io.mint_output_dpos_y = mint_output_dpos_y;
+
+		// line info
+		full_fit_io.line_input_seq_length = line_io.input_seq_length;
+		full_fit_io.line_input_times = line_io.input_times;
+		std::vector<double> line_input_pos_x;
+		std::vector<double> line_input_pos_y;
+		full_fit_io.line_output_dim = line_io.output_dim;
+		full_fit_io.line_output_intercept = line_io.output_intercept;
+		full_fit_io.line_output_slope = line_io.output_slope;
+
+		for (int i = 0; i < line_io.input_seq_length; i++){
+				line_input_pos_x.push_back(line_io.input_pos[i][0]);
+				line_input_pos_y.push_back(line_io.input_pos[i][1]);
+		}
+		full_fit_io.line_input_pos_x = line_input_pos_x;
+		full_fit_io.line_input_pos_y = line_input_pos_y;
+
+		// circle info
+		full_fit_io.circle_input_seq_length = circle_io.input_seq_length;
+		full_fit_io.circle_input_times = circle_io.input_times;
+		std::vector<double> circle_input_pos_x;
+		std::vector<double> circle_input_pos_y;
+		full_fit_io.circle_output_dim = circle_io.output_dim;
+		full_fit_io.circle_output_center = circle_io.circle_center;
+		full_fit_io.circle_output_radius = circle_io.circle_radius;
+
+		for (int i = 0; i < circle_io.input_seq_length; i++){
+				circle_input_pos_x.push_back(circle_io.input_pos[i][0]);
+				circle_input_pos_y.push_back(circle_io.input_pos[i][1]);
+		}
+		full_fit_io.circle_input_pos_x = circle_input_pos_x;
+		full_fit_io.circle_input_pos_y = circle_input_pos_y;
+	}
+	pub_io.publish(full_fit_io);
+	return;
+};
 /*
 void MIntNodeWrapper::dequeHandler(){
 	std::chrono::steady_clock::time_point time_current = std::chrono::steady_clock::now();
@@ -278,6 +361,7 @@ void MIntNodeWrapper::mainLoop() {
 	while (ros::ok()){
 		geometry_msgs::PoseStamped pose_s; // empty posestamped message
 		fitHandler();
+		publishIO();
 		Eigen::ArrayXf eq_pose = Eigen::ArrayXf::Zero(2,1);
 		if (b_mint_ready){
 			// update empty message with fitted value

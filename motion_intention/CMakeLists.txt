@@ -59,6 +59,7 @@ find_package(iir REQUIRED) # for filtering the inputs to the mintnet
  add_message_files(
    FILES
    HistoryStamped.msg
+   FullFitIO.msg
 #   Message2.msg
  )
 
