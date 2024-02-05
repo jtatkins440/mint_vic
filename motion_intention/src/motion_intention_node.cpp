@@ -209,15 +209,70 @@ void MIntNodeWrapper::fitHandler(){
 	if (sample_time <= time_span.count()){
 		// if enough time has passed, update the deque and refit the spine
 		if (b_deque_ready){
-			mintnet.fit(current_state, mint_input_array); // expects [current_position; current_velocity] for first argument!
-			mint_line.fit(current_state, cfit_input_array); 
-			mint_circ.fit(current_state, cfit_input_array); 
+			if (fit_type == 0){
+				mintnet.fit(current_state, mint_input_array); // expects [current_position; current_velocity] for first argument!
+			}
+			else if (fit_type == 1){
+				mint_line.fit(current_state, cfit_input_array);
+			}
+			else if (fit_type == 2){
+				mint_circ.fit(current_state, cfit_input_array);
+			}
 			b_mint_ready = true;
 		}
 		time_start = std::chrono::steady_clock::now();
 	}
 };
 
+void MIntNodeWrapper::publishIO(){
+	motion_intention::FullFitIO full_fit_io;
+	full_fit_io.header.stamp = ros::Time::now(); 
+	if (b_mint_ready){
+		if (fit_type == 0){	
+			// mint info
+			mint_io = mintnet.getIOStruct();
+			full_fit_io.mint_input_seq_length = mint_io.input_seq_length;
+			full_fit_io.mint_input_times = mint_io.input_times;
+			full_fit_io.mint_output_seq_length = mint_io.output_seq_length;
+			full_fit_io.mint_output_times = mint_io.output_times;
+
+			full_fit_io.mint_input_vel_x = mint_io.input_vel[0]; //mint_input_vel_x;
+			full_fit_io.mint_input_vel_y = mint_io.input_vel[1]; //mint_input_vel_y;
+			full_fit_io.mint_input_acc_x = mint_io.input_acc[0]; //mint_input_acc_x;
+			full_fit_io.mint_input_acc_y = mint_io.input_acc[1]; //mint_input_acc_y;
+			full_fit_io.mint_output_dpos_x = mint_io.output_dpos[0]; //mint_output_dpos_x;
+			full_fit_io.mint_output_dpos_y = mint_io.output_dpos[1]; //mint_output_dpos_y;
+		}
+		else if (fit_type == 1){
+			// line info
+			line_io = mint_line.getIOStruct();
+			full_fit_io.line_input_seq_length = line_io.input_seq_length;
+			full_fit_io.line_input_times = line_io.input_times;
+			full_fit_io.line_output_dim = line_io.output_dim;
+			full_fit_io.line_output_intercept = line_io.output_intercept;
+			full_fit_io.line_output_slope = line_io.output_slope;
+
+			full_fit_io.line_input_pos_x = line_io.input_pos[0];
+			full_fit_io.line_input_pos_y = line_io.input_pos[1];
+		}
+		else if (fit_type == 2){
+			// circle info
+			circle_io = mint_circ.getIOStruct();
+			full_fit_io.circle_input_seq_length = circle_io.input_seq_length;
+			full_fit_io.circle_input_times = circle_io.input_times;
+			full_fit_io.circle_output_dim = circle_io.output_dim;
+			full_fit_io.circle_output_center = circle_io.circle_center;
+			full_fit_io.circle_output_radius = circle_io.circle_radius;
+
+			full_fit_io.circle_input_pos_x = circle_io.input_pos[0];
+			full_fit_io.circle_input_pos_y = circle_io.input_pos[1];
+		}
+	}
+	pub_io.publish(full_fit_io);
+	return;
+};
+
+/* // old, assumes inputs are arranged differently
 void MIntNodeWrapper::publishIO(){
 	motion_intention::FullFitIO full_fit_io;
 	full_fit_io.header.stamp = ros::Time::now(); 
@@ -290,6 +345,7 @@ void MIntNodeWrapper::publishIO(){
 	pub_io.publish(full_fit_io);
 	return;
 };
+*/
 /*
 void MIntNodeWrapper::dequeHandler(){
 	std::chrono::steady_clock::time_point time_current = std::chrono::steady_clock::now();

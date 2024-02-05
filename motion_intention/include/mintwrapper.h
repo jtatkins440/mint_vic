@@ -224,7 +224,7 @@ class MIntWrapper{
 
 		for (int i = 0; i < output_chn_size; i++) {
 		  for (int j = 0; j < output_seq_length; j++) {
-		    output_scaling_array(i, j) = 1.0 / output_scalers[i];
+		    output_scaling_array(i, j) = output_scalers[i];
 		  }
 		}
 		
@@ -402,10 +402,10 @@ MIntNetIO MIntWrapper::getIOStruct(){
 
 	Eigen::ArrayXXf inputs = getInputArray();
 	
-	std::vector<double> vel;
+	std::vector<double> vel; // this is velocity for a single channel across all cols now! Was backwards but this is easier to save
 	std::vector<double> acc;
-	for (int col = 0; col < inputs.cols(); col++){
-		for (int row = 0; row < model_dim; row++){
+	for (int row = 0; row < model_dim; row++){
+		for (int col = 0; col < inputs.cols(); col++){
 			vel.push_back(inputs(row, col));
 			acc.push_back(inputs(row + model_dim, col));
 		}
@@ -417,8 +417,8 @@ MIntNetIO MIntWrapper::getIOStruct(){
 
 	std::vector<double> dpos;
 	Eigen::ArrayXXf outputs = getOutputArray();
-	for (int col = 0; col < outputs.cols(); col++){
-		for (int row = 0; row < model_dim; row++){
+	for (int row = 0; row < model_dim; row++){
+		for (int col = 0; col < outputs.cols(); col++){
 			dpos.push_back(outputs(row, col));
 		}
 		output_dpos.push_back(dpos);
@@ -534,6 +534,40 @@ class LineFitWrapper{
 
 		std::vector<std::vector<double>> input_pos;
 		std::vector<double> pos;
+		for (int row = 0; row < model_order; row++){
+			for (int col = 0; col < Y_copy.cols(); col++){
+				pos.push_back(Y_copy(row, col));
+			}
+			input_pos.push_back(pos);
+			pos.clear(); 
+		}
+		
+		io_struct = LineFitIO(used_seq_length,
+						input_times,
+						input_pos,
+						output_chn_size,
+						output_intercept,
+						output_slope);
+		return io_struct;
+	};
+
+	/* // old
+	LineFitIO getIOStruct(){
+		std::vector<double> output_intercept;
+		std::vector<double> output_slope;
+
+		for (int dim = 0; dim < model_order; dim++){
+			output_intercept.push_back(b_coeffs(0, dim));
+			output_slope.push_back(b_coeffs(1, dim));
+		}
+		
+		std::vector<double> input_times;
+		for (int row = 0; row < used_seq_length; row++){
+			input_times.push_back((double) A(row, 1)); //-((float)(used_seq_length - row - 1)) * dt;
+		}
+
+		std::vector<std::vector<double>> input_pos;
+		std::vector<double> pos;
 		for (int col = 0; col < Y_copy.cols(); col++){
 			for (int row = 0; row < model_order; row++){
 				pos.push_back(Y_copy(row, col));
@@ -550,6 +584,7 @@ class LineFitWrapper{
 						output_slope);
 		return io_struct;
 	};
+	*/
 
 	void fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input){
 		// current state is ignored, only here because of compatibility with ROS wrapper
@@ -655,6 +690,23 @@ class CircleFitWrapper{
 
 	CircleFitIO getIOStruct(){
 		std::vector<std::vector<double>> input_pos;
+
+		input_pos.push_back(x_vec);
+		input_pos.push_back(y_vec);
+
+		std::vector<double> circle_center = {circle.a, circle.b};
+		io_struct = CircleFitIO(used_seq_length,
+							input_times,
+							input_pos,
+							output_chn_size,
+							circle_center,
+							(double) circle.r);
+		return io_struct;
+	};
+
+	/*
+	CircleFitIO getIOStruct(){
+		std::vector<std::vector<double>> input_pos;
 		std::vector<double> pos;
 		for (int col = 0; col < used_seq_length; col++){
 			pos.push_back(x_vec[col]);
@@ -673,6 +725,7 @@ class CircleFitWrapper{
 							(double) circle.r);
 		return io_struct;
 	};
+	*/
 
 	// UPDATE
 	void fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input){
