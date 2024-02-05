@@ -70,6 +70,8 @@ class MIntNodeWrapper{
 			line_io = LineFitIO();
 			circle_io = CircleFitIO();
 
+			user_intent_mag = 0.0;
+
 			ROS_INFO("mint: MIntNodeWrapper initalized.");
 		};
 
@@ -111,6 +113,7 @@ class MIntNodeWrapper{
 		int mint_state_dim;
 		int cfit_state_dim;
 		bool b_swap_axis;
+		double user_intent_mag;
 
 		bool b_deque_ready = false; // flag for toggling if deque is full or not
 		bool b_mint_ready = false; // flag for toggling if mint method is fitted and ready to give predictions
@@ -194,9 +197,11 @@ void MIntNodeWrapper::subscriberHistoryCallback(const motion_intention::HistoryS
 	else{
 		current_state_temp << (float) msg->state[0], (float) msg->state[1], (float) msg->state[2], (float) msg->state[3];
 	}
+	
 
 	cfit_input_array = full_hist_matrix.block(0,0,cfit_state_dim,cols).eval();
 	mint_input_array = full_hist_matrix.block(2,0,mint_state_dim,cols).eval();
+	user_intent_mag = (double) mint_input_array(0, cols-1) * mint_input_array(2, cols-1) + mint_input_array(1, cols-1) * mint_input_array(3, cols-1); // should be most recent value, if this is positive we should refit the traj
 	current_state.swap(current_state_temp);
 	b_deque_ready = true;
 };
@@ -209,7 +214,8 @@ void MIntNodeWrapper::fitHandler(){
 	if (sample_time <= time_span.count()){
 		// if enough time has passed, update the deque and refit the spine
 		if (b_deque_ready){
-			if (fit_type == 0){
+			if (0.0 < user_intent_mag){
+				if (fit_type == 0){
 				mintnet.fit(current_state, mint_input_array); // expects [current_position; current_velocity] for first argument!
 			}
 			else if (fit_type == 1){
@@ -219,6 +225,8 @@ void MIntNodeWrapper::fitHandler(){
 				mint_circ.fit(current_state, cfit_input_array);
 			}
 			b_mint_ready = true;
+			}
+			
 		}
 		time_start = std::chrono::steady_clock::now();
 	}
