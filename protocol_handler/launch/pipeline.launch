@@ -1,6 +1,12 @@
 <launch>
+<<<<<<< HEAD
+	<include file="$(find admittance_control)/launch/admittance_control.launch"/>
+	<include file="$(find motion_intention)/launch/motion_intent.launch"/>
+	<include file="$(find trial_data_logger)/launch/data_logger.launch"/>
+=======
 	<include file="$(find iiwa_gazebo)/launch/iiwa_gazebo.launch"/>
 	<include file="$(find admittance_control)/launch/admittance_control.launch"/>
 	<include file="$(find motion_intention)/launch/motion_intent.launch"/>
+>>>>>>> 076e169d382f406399979b1b01a1a35b94031da7
 	<!-- Add the protocol launch file here! -->
 </launch>
