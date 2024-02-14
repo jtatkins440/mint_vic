@@ -130,12 +130,13 @@ class MIntSpline{
 
 void MIntSpline::updateSpline(Eigen::ArrayXf current_state, Eigen::ArrayXXf pred_pos) {
 
-	// shifts relative positions to global 
 	std::vector<tk::spline> spline_vec_temp;
 	for (int i = 0; i < _spline_dim; i++) {
+		/* // shifts relative positions to global 
 		for (int j = 0; j < pred_pos.cols(); j++) {
 			pred_pos(i, j) = pred_pos(i, j) + current_state(i);
 		}
+		*/
 		std::vector<double> spline_points;
 
 		for (int j = 0; j < pred_pos.cols(); j++) {
@@ -213,12 +214,277 @@ class MIntWrapper{
 			output_scalers.push_back(data_helper["output_scaling_list"][i]);
 		}
 		
-		// create scaling arrays
+		// create scaling arrays, divide for inputs and multiple outputs
 		input_scaling_array = Eigen::ArrayXXf::Ones(input_chn_size, input_seq_length); // should change all of these to Eigen::Array<float, chn_size, seq_length> and similar for better optimization. No need for allocating during runtime but maybe not big issue here.
 		output_scaling_array = Eigen::ArrayXXf::Ones(output_chn_size, output_seq_length);
 		for (int i = 0; i < input_chn_size; i++) {
 			for (int j = 0; j < input_seq_length; j++) {
-				input_scaling_array(i, j) = input_scalers[i];
+				input_scaling_array(i, j) = 1.0 / input_scalers[i];
+			}
+		}
+
+		for (int i = 0; i < output_chn_size; i++) {
+		  for (int j = 0; j < output_seq_length; j++) {
+		    output_scaling_array(i, j) = output_scalers[i];
+		  }
+		}
+		
+		// load mintnet itself
+		try {
+			mint_module = torch::jit::load(mint_path);
+		}
+		catch (const c10::Error& e) {
+			std::cerr << "error loading the model\n";
+			return ;
+		}
+		
+		input_a = Eigen::ArrayXXf::Ones(input_chn_size, input_seq_length);
+		output_a = Eigen::ArrayXXf::Ones(output_chn_size, output_seq_length);
+
+		// initialize I/O tensors
+		input_t = torch::randn({1, input_chn_size, input_seq_length});
+		output_t = torch::randn({1, output_chn_size, output_seq_length});
+		
+		double dt = (double) data_helper["dt"];
+		input_time_vec.clear();
+		for (int i = 0; i < input_seq_length; i++) {
+			double time_point = -((double)(input_seq_length - i - 1)) * dt;
+			input_time_vec.push_back(time_point);
+		}
+
+		output_time_vec.clear();
+		for (int i = 0; i < output_seq_length; i++) {
+			output_time_vec.push_back(data_helper["output_times"][i]);
+		}
+
+		mintspline = MIntSpline(output_time_vec, output_chn_size, eq_lead_time);
+
+		io_struct = MIntNetIO();
+
+		//diff_index_points = std::vector<int>{};
+		for (int i = 0; i < output_seq_length; i++) {
+			diff_index_points.push_back(data_helper["output_diff_indices"][i]);
+			diff_index_points[i] = diff_index_points[i] + (input_seq_length - 1);
+		}
+		// finished
+		std::cout << "MIntWrapper Initalized!" << std::endl;
+	}
+	double eq_lead_time;
+
+	Eigen::ArrayXXf forward(std::deque<Eigen::ArrayXf> input);
+	Eigen::ArrayXXf forward(Eigen::ArrayXXf input);
+	
+	// main two functions that need to be implimented in every MIntWrapper variation are fit() and getEquilibriumPoint()
+	void fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input, Eigen::ArrayXXf pos_input);
+	MIntNetIO io_struct;
+	MIntNetIO getIOStruct(); // getter function for the inputs and outputs
+	Eigen::ArrayXf getEquilibriumPoint();
+	int input_chn_size;
+	int output_chn_size;
+	int input_seq_length;
+	int output_seq_length;
+	int model_dim;
+	std::vector<double> output_time_vec;
+	std::vector<double> input_time_vec;
+	Eigen::ArrayXXf getInputArray();
+	Eigen::ArrayXXf getOutputArray();
+	Eigen::ArrayXXf correctResidualsAndShift(Eigen::ArrayXXf pred_dpos, Eigen::ArrayXXf lagged_pos);
+
+	private:
+	std::string mint_path;
+	std::string param_path;
+	nlohmann::json params;
+	Eigen::ArrayXXf input_scaling_array;
+	Eigen::ArrayXXf output_scaling_array;
+	torch::jit::script::Module mint_module;
+	at::Tensor input_t;
+	at::Tensor output_t;
+    torch::jit::IValue output_v;
+	std::vector<torch::jit::IValue> input_v;
+    Eigen::ArrayXXf input_a;
+	Eigen::ArrayXXf output_a;
+    Eigen::ArrayXXf forward_(Eigen::ArrayXXf input);
+	std::vector<int> diff_index_points;
+	MIntSpline mintspline;
+};
+
+Eigen::ArrayXXf MIntWrapper::forward_(Eigen::ArrayXXf input)
+{
+	// scale the input array
+	input_a = input;
+	input = input * input_scaling_array;
+	
+	// convert input Eigen array to Tensor
+	input_t = input_t.index_put_({torch::indexing::Slice(torch::indexing::None, input_chn_size, input_seq_length)}, torch::from_blob(input.data(), {input_chn_size, input_seq_length}).clone());
+  
+	// clear out IValue vector and fill with new input
+	input_v.clear();
+	input_v.push_back(input_t);
+
+	// predict new unscaled IValue
+	output_v = mint_module.forward(input_v);
+
+	// IValue to Tensor
+	output_t = output_v.toTensor().index({torch::indexing::Slice(torch::indexing::None, output_chn_size, output_seq_length)}); 
+
+	// Tensor to flat float vector
+	std::vector<float> v(output_t.data_ptr<float>(), output_t.data_ptr<float>() + output_t.numel()); 
+
+	// float vector to Eigen array
+	int k = 0;
+	for (int i = 0; i < output_chn_size; i++) {
+		for (int j = 0; j < output_seq_length; j++) {
+			output_a(i, j) = v[k]; // fills jth element of vector sequence with ith channel from vector 
+			k++;
+		}
+	}
+
+	// fix Eigen array scaling
+	output_a = output_a * output_scaling_array;
+
+	return output_a;
+};
+
+// wrapper method for predictions, handles all conversions for ease of online use
+Eigen::ArrayXXf MIntWrapper::forward(Eigen::ArrayXXf input)
+{
+	output_a = forward_(input);
+	return output_a;
+};
+
+void MIntWrapper::fit(Eigen::ArrayXf current_state, Eigen::ArrayXXf input, Eigen::ArrayXXf pos_input){
+	Eigen::ArrayXXf pred_dpos = forward(input);
+	Eigen::ArrayXXf lagged_pos = pos_input(Eigen::placeholders::all, diff_index_points);
+	Eigen::ArrayXXf pred_pos = correctResidualsAndShift(forward(input), lagged_pos);
+	//Eigen::ArrayXXf pred_pos = correctResidualsAndShift(forward(input), pos_input(Eigen::placeholders::all, diff_index_points));
+	//std::cout << "pred_dpos: " << pred_dpos << std::endl << "pred_pos: " << pred_pos << std::endl << "lagged_pos: " << lagged_pos << std::endl << std::endl;
+	mintspline.updateSpline(current_state, pred_pos);
+};
+
+Eigen::ArrayXXf MIntWrapper::correctResidualsAndShift(Eigen::ArrayXXf pred_dpos, Eigen::ArrayXXf lagged_pos){
+	// save everything to a csv
+
+	//std::cout << "before initial_residual\n";
+	
+	//std::cout << "before cluster_residual\n";
+	Eigen::ArrayXf cluster_residual = pred_dpos.block(0, output_seq_length-3, output_chn_size, 1) - pred_dpos.block(0, output_seq_length-2, output_chn_size, 1);
+	//std::cout << "before output_pos\n";
+	//Eigen::ArrayXXf output_pos = (pred_dpos + lagged_pos).colwise() - initial_residual;
+	Eigen::ArrayXXf output_pos = (pred_dpos + lagged_pos);
+	//Eigen::ArrayXf initial_residual = pred_dpos.block(0, 0, output_chn_size, 1) - lagged_pos.block(0, output_seq_length-1, output_chn_size, 1);
+	Eigen::ArrayXf initial_residual = output_pos.block(0, 0, output_chn_size, 1) - lagged_pos.block(0, output_seq_length-1, output_chn_size, 1);
+	output_pos = output_pos.colwise() - initial_residual;
+	//std::cout << "before second_cluster\n";
+	//std::cout << "output_pos: " << output_pos << std::endl;
+	//Eigen::ArrayXXf second_cluster = output_pos.block(0, output_seq_length-3, output_chn_size, 3);
+	//std::cout << "before output_pos.block\n";
+	output_pos.block(0, output_seq_length-3, output_chn_size, 3) = (output_pos.block(0, output_seq_length-3, output_chn_size, 3)).colwise() - cluster_residual;
+	//std::cout << "before return\n";
+	return output_pos;
+}
+
+Eigen::ArrayXf MIntWrapper::getEquilibriumPoint()
+{
+	return mintspline.sampleEquilibriumPoint();
+};
+
+Eigen::ArrayXXf MIntWrapper::getInputArray(){
+	Eigen::ArrayXXf returned_input = input_a;
+	return returned_input;
+};
+
+// call after forward
+Eigen::ArrayXXf MIntWrapper::getOutputArray(){
+	Eigen::ArrayXXf returned_output = output_a;
+	return returned_output;
+};
+
+/*
+io_struct = MIntNetIO(int input_seq_length_,
+	std::vector<double> input_times_,
+	std::vector<std::vector<double>> input_vel_,
+	std::vector<std::vector<double>> input_acc_,
+	int output_seq_length_,
+	std::vector<double> output_times_,
+	std::vector<std::vector<double>> output_dpos_);
+*/
+MIntNetIO MIntWrapper::getIOStruct(){
+	std::vector<std::vector<double>> input_vel;
+	std::vector<std::vector<double>> input_acc;
+	std::vector<std::vector<double>> output_dpos;
+
+	Eigen::ArrayXXf inputs = getInputArray();
+	
+	std::vector<double> vel; // this is velocity for a single channel across all cols now! Was backwards but this is easier to save
+	std::vector<double> acc;
+	for (int row = 0; row < model_dim; row++){
+		for (int col = 0; col < inputs.cols(); col++){
+			vel.push_back(inputs(row, col));
+			acc.push_back(inputs(row + model_dim, col));
+		}
+		input_vel.push_back(vel);
+		input_acc.push_back(acc);
+		vel.clear(); 
+		acc.clear();
+	}
+
+	std::vector<double> dpos;
+	Eigen::ArrayXXf outputs = getOutputArray();
+	for (int row = 0; row < model_dim; row++){
+		for (int col = 0; col < outputs.cols(); col++){
+			dpos.push_back(outputs(row, col));
+		}
+		output_dpos.push_back(dpos);
+		dpos.clear();
+	}
+
+	io_struct = MIntNetIO(input_seq_length,
+						input_time_vec,
+						input_vel,
+						input_acc,
+						output_seq_length,
+						output_time_vec,
+						output_dpos);
+	return io_struct;
+};
+
+/*
+class MIntWrapper{
+	public:
+	MIntWrapper(){};
+	
+	MIntWrapper(std::string model_path, std::string json_path) : mint_path(model_path), param_path(json_path) {
+		// guard this in a try/catch block!
+		
+		// read in json and initalize parameters
+		std::ifstream f(param_path);
+		params = nlohmann::json::parse(f);
+		nlohmann::json data_helper = params["helper_params"];
+		nlohmann::json data_model = params["mdl_params"];
+		input_chn_size = int(data_model["input_size"]);
+		output_chn_size = int(data_model["output_size"]);
+		input_seq_length = int(data_helper["input_sequence_length"]);
+		output_seq_length = int(data_model["M"]) * int(data_model["G"]);
+		eq_lead_time = (double) data_helper["lead_time"];
+		model_dim = int(data_helper["dim"]);
+		// unpack scaling values
+		std::vector<float> input_scalers;
+		for (int i = 0; i < input_chn_size; i++) {
+			input_scalers.push_back(data_helper["input_scaling_list"][i]);
+		}
+		std::cout << input_scalers << std::endl;
+
+		std::vector<float> output_scalers;
+		for (int i = 0; i < output_chn_size; i++) {
+			output_scalers.push_back(data_helper["output_scaling_list"][i]);
+		}
+		
+		// create scaling arrays, divide for inputs and multiple outputs
+		input_scaling_array = Eigen::ArrayXXf::Ones(input_chn_size, input_seq_length); // should change all of these to Eigen::Array<float, chn_size, seq_length> and similar for better optimization. No need for allocating during runtime but maybe not big issue here.
+		output_scaling_array = Eigen::ArrayXXf::Ones(output_chn_size, output_seq_length);
+		for (int i = 0; i < input_chn_size; i++) {
+			for (int j = 0; j < input_seq_length; j++) {
+				input_scaling_array(i, j) = 1.0 / input_scalers[i];
 			}
 		}
 
@@ -386,15 +652,6 @@ Eigen::ArrayXXf MIntWrapper::getOutputArray(){
 	return returned_output;
 };
 
-/*
-io_struct = MIntNetIO(int input_seq_length_,
-	std::vector<double> input_times_,
-	std::vector<std::vector<double>> input_vel_,
-	std::vector<std::vector<double>> input_acc_,
-	int output_seq_length_,
-	std::vector<double> output_times_,
-	std::vector<std::vector<double>> output_dpos_);
-*/
 MIntNetIO MIntWrapper::getIOStruct(){
 	std::vector<std::vector<double>> input_vel;
 	std::vector<std::vector<double>> input_acc;
@@ -434,7 +691,7 @@ MIntNetIO MIntWrapper::getIOStruct(){
 						output_dpos);
 	return io_struct;
 };
-
+*/
 // LineFitWrapper expects to be passed the current state as a [position; velocity] vector and the input as a 2x125 array of 
 class LineFitWrapper{
 	public:

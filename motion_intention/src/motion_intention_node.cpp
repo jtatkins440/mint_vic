@@ -210,7 +210,7 @@ void MIntNodeWrapper::fitHandler(){
 		// if enough time has passed, update the deque and refit the spine
 		if (b_deque_ready){
 			if (fit_type == 0){
-				mintnet.fit(current_state, mint_input_array); // expects [current_position; current_velocity] for first argument!
+				mintnet.fit(current_state, mint_input_array, cfit_input_array); // expects [current_position; current_velocity] for first argument!
 			}
 			else if (fit_type == 1){
 				mint_line.fit(current_state, cfit_input_array);
@@ -271,138 +271,6 @@ void MIntNodeWrapper::publishIO(){
 	pub_io.publish(full_fit_io);
 	return;
 };
-
-/* // old, assumes inputs are arranged differently
-void MIntNodeWrapper::publishIO(){
-	motion_intention::FullFitIO full_fit_io;
-	full_fit_io.header.stamp = ros::Time::now(); 
-	if (b_mint_ready){
-		mint_io = mintnet.getIOStruct();
-		line_io = mint_line.getIOStruct();
-		circle_io = mint_circ.getIOStruct();
-
-		// mint info
-		full_fit_io.mint_input_seq_length = mint_io.input_seq_length;
-		full_fit_io.mint_input_times = mint_io.input_times;
-		std::vector<double> mint_input_vel_x;
-		std::vector<double> mint_input_vel_y;
-		std::vector<double> mint_input_acc_x;
-		std::vector<double> mint_input_acc_y;
-		full_fit_io.mint_output_seq_length = mint_io.output_seq_length;
-		full_fit_io.mint_output_times = mint_io.output_times;
-		std::vector<double> mint_output_dpos_x;
-		std::vector<double> mint_output_dpos_y;
-
-		for (int i = 0; i < mint_io.input_seq_length; i++){
-				mint_input_vel_x.push_back(mint_io.input_vel[i][0]);
-				mint_input_vel_y.push_back(mint_io.input_vel[i][1]);
-				mint_input_acc_x.push_back(mint_io.input_acc[i][0]);
-				mint_input_acc_y.push_back(mint_io.input_acc[i][1]);
-		}
-		for (int i = 0; i < mint_io.output_seq_length; i++){
-				mint_output_dpos_x.push_back(mint_io.output_dpos[i][0]);
-				mint_output_dpos_y.push_back(mint_io.output_dpos[i][1]);
-		}
-		full_fit_io.mint_input_vel_x = mint_input_vel_x;
-		full_fit_io.mint_input_vel_y = mint_input_vel_y;
-		full_fit_io.mint_input_acc_x = mint_input_acc_x;
-		full_fit_io.mint_input_acc_y = mint_input_acc_y;
-		full_fit_io.mint_output_dpos_x = mint_output_dpos_x;
-		full_fit_io.mint_output_dpos_y = mint_output_dpos_y;
-
-		// line info
-		full_fit_io.line_input_seq_length = line_io.input_seq_length;
-		full_fit_io.line_input_times = line_io.input_times;
-		std::vector<double> line_input_pos_x;
-		std::vector<double> line_input_pos_y;
-		full_fit_io.line_output_dim = line_io.output_dim;
-		full_fit_io.line_output_intercept = line_io.output_intercept;
-		full_fit_io.line_output_slope = line_io.output_slope;
-
-		for (int i = 0; i < line_io.input_seq_length; i++){
-				line_input_pos_x.push_back(line_io.input_pos[i][0]);
-				line_input_pos_y.push_back(line_io.input_pos[i][1]);
-		}
-		full_fit_io.line_input_pos_x = line_input_pos_x;
-		full_fit_io.line_input_pos_y = line_input_pos_y;
-
-		// circle info
-		full_fit_io.circle_input_seq_length = circle_io.input_seq_length;
-		full_fit_io.circle_input_times = circle_io.input_times;
-		std::vector<double> circle_input_pos_x;
-		std::vector<double> circle_input_pos_y;
-		full_fit_io.circle_output_dim = circle_io.output_dim;
-		full_fit_io.circle_output_center = circle_io.circle_center;
-		full_fit_io.circle_output_radius = circle_io.circle_radius;
-
-		for (int i = 0; i < circle_io.input_seq_length; i++){
-				circle_input_pos_x.push_back(circle_io.input_pos[i][0]);
-				circle_input_pos_y.push_back(circle_io.input_pos[i][1]);
-		}
-		full_fit_io.circle_input_pos_x = circle_input_pos_x;
-		full_fit_io.circle_input_pos_y = circle_input_pos_y;
-	}
-	pub_io.publish(full_fit_io);
-	return;
-};
-*/
-/*
-void MIntNodeWrapper::dequeHandler(){
-	std::chrono::steady_clock::time_point time_current = std::chrono::steady_clock::now();
-	bool update_deque_flag = true;
-
-	time_current = std::chrono::steady_clock::now();
-	std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(time_current - time_start);
-	if (sample_time <= time_span.count()){
-		// if enough time has passed, update the deque and refit the spine
-		Eigen::Array<float, 2, 1> pose_new;
-		pose_new << current_position(0), current_position(1); // x and y position only!
-		std::cout << "time_span.count(): " << time_span.count() << std::endl;
-		updateDeque(pose_new, time_span.count());
-		if (b_deque_ready){
-			Eigen::Array<float, 4, 1> current_state;
-			Eigen::Array<float, 4, 1> current_vel_acc;
-			current_vel_acc = input_deque[input_deque.size() - 1];
-			current_state << current_position(0), current_position(1), current_vel_acc(0), current_vel_acc(1);
-
-			std::cout << std::endl;
-			mintnet.fit(current_state, input_deque); // expects [current_position; current_velocity] for first argument!
-
-			b_mint_ready = true;
-		}
-		time_start = std::chrono::steady_clock::now();
-	}
-};
-*/
-
-/*
-// this assumes the deque will be given inputs of global positions. Ideally we'd just have velocity and acceleration inputs from the admittance controller.
-void MIntNodeWrapper::updateDeque(Eigen::ArrayXf new_pose, float dt){
-
-	if (pose_deque.size() >= input_deque_seq_length) {
-		pose_deque.pop_front(); // if we don't seperate these two conditions then pose_deque would be longer than input_deque. Not a big problem though, merge later if needed.
-	}
-
-	if (input_deque.size() >= input_deque_seq_length) {
-		input_deque.pop_front();
-		b_deque_ready = true;
-	}
-
-
-	pose_deque.push_back(new_pose);
-	if (pose_deque.size() > pose_deque_min_size){
-		Eigen::Array<float, 2, 1> vel_est;
-		vel_est << (pose_deque[pose_deque.size() - 1] - pose_deque[pose_deque.size() - 2]) / dt;
-		Eigen::Array<float, 2, 1> acc_est;
-		acc_est << (vel_est - (pose_deque[pose_deque.size() - 2] - pose_deque[pose_deque.size() - 3]) / dt) / dt;
-		Eigen::Array<float, 4, 1> new_input;
-		new_input << vel_est, acc_est;
-		input_deque.push_back(new_input);
-	}
-
-	return; 
-};
-*/
 
 void MIntNodeWrapper::waitRemainingLoopTime(std::chrono::time_point<std::chrono::steady_clock> start_time, std::chrono::duration<double> desired_duration){
 	std::chrono::duration<double> diff = std::chrono::steady_clock::now() - start_time; 
